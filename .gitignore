@@ -1,0 +1,10 @@
+node_modules
+storage
+apify_storage
+.venv
+*.log
+.DS_Store
+
+# internal / launch materials (not part of the public tool)
+PUBLISH-REHBER.md
+LANSMAN-devto.md

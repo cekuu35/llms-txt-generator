@@ -1,0 +1,38 @@
+{
+    "title": "llms.txt Generator Input",
+    "type": "object",
+    "schemaVersion": 1,
+    "properties": {
+        "websiteUrl": {
+            "title": "Website URL",
+            "type": "string",
+            "editor": "textfield",
+            "description": "The site to make AI-readable. The crawler starts here and follows same-domain links.",
+            "prefill": "https://docs.apify.com",
+            "example": "https://example.com"
+        },
+        "maxPages": {
+            "title": "Max pages to crawl",
+            "type": "integer",
+            "description": "Upper limit on pages processed. Controls cost and runtime.",
+            "default": 50,
+            "minimum": 1,
+            "maximum": 5000
+        },
+        "includeFullText": {
+            "title": "Also generate llms-full.txt",
+            "type": "boolean",
+            "description": "Generate the full-content file (all page text) in addition to the concise llms.txt index.",
+            "default": true
+        },
+        "maxContentCharsPerPage": {
+            "title": "Max content characters per page",
+            "type": "integer",
+            "description": "Truncate very long pages in llms-full.txt to keep the output manageable.",
+            "default": 12000,
+            "minimum": 1000,
+            "maximum": 100000
+        }
+    },
+    "required": ["websiteUrl"]
+}

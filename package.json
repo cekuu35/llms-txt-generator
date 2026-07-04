@@ -1,0 +1,14 @@
+{
+  "name": "llms-txt-generator",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Crawl any website and generate llms.txt and llms-full.txt for AI/LLM discoverability and RAG pipelines.",
+  "dependencies": {
+    "apify": "^3.2.6",
+    "crawlee": "^3.11.5",
+    "cheerio": "^1.0.0"
+  },
+  "scripts": {
+    "start": "node src/main.js"
+  }
+}
