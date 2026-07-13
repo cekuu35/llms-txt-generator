@@ -4,13 +4,13 @@ Generate **`llms.txt`** and **`llms-full.txt`** for any website — the emerging
 
 Point this Actor at a URL. It crawls the site, extracts titles, descriptions, and clean main content, and produces two downloadable files ready to drop at your domain root.
 
-**▶️ Run it now on Apify → https://apify.com/nacred_corner/llms-txt-generator** — no install, API-callable, pay per page.
+**▶️ Run it now on Apify → https://apify.com/nacred_corner/llms-txt-generator** — no install, API-callable, with $5 / 1,000-result pricing scheduled from July 18, 2026.
 
 ## Why llms.txt matters in 2026
 
-- **RAG is the default architecture** for AI apps — `llms.txt` files are pre-structured, information-dense input made for retrieval pipelines.
-- **Google added `llms.txt` to Chrome Lighthouse's "Agentic Browsing" audit** (May 2026) as an AI-readiness check.
-- AI search visibility (GEO/AEO) increasingly depends on giving models a clean, structured map of your content.
+- **Chrome Lighthouse added an optional `llms.txt` audit** to its Agentic Browsing category in May 2026. A missing file currently returns N/A, while server errors are flagged.
+- `llms.txt` gives agents a concise map of a site's most important pages without requiring them to reconstruct that map from navigation and page chrome.
+- `llms-full.txt` gives RAG and content-ingestion pipelines a clean, text-first snapshot of the crawled pages.
 
 ## What this Actor does
 
@@ -25,7 +25,7 @@ Point this Actor at a URL. It crawls the site, extracts titles, descriptions, an
 Unlike one-off web UI tools, this Actor is **API-callable, batch-friendly, and pipeline-ready**:
 - Generate `llms.txt` for **hundreds of client sites** programmatically.
 - Wire it into a **content/RAG pipeline** (n8n, cron, CI) via the Apify API.
-- Pay only for pages processed.
+- Pay per processed page result once the scheduled per-result pricing becomes active.
 
 ## Input
 

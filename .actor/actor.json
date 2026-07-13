@@ -2,7 +2,7 @@
     "actorSpecification": 1,
     "name": "llms-txt-generator",
     "title": "llms.txt Generator — Make Any Website AI-Readable",
-    "description": "Crawl a website and generate llms.txt + llms-full.txt for AI/LLM discoverability and RAG pipelines. Batch, API-callable, pay-per-page.",
+    "description": "Crawl a website and generate llms.txt + llms-full.txt for AI/LLM and RAG workflows. Batch and API-callable for agencies and automations.",
     "version": "0.1",
     "meta": {
         "templateId": "js-crawlee-cheerio"

@@ -110,11 +110,19 @@ if (includeFullText) {
 }
 
 const files = includeFullText ? ['llms.txt', 'llms-full.txt'] : ['llms.txt'];
+const { defaultKeyValueStoreId } = Actor.getEnv();
+const downloadUrls = defaultKeyValueStoreId
+    ? Object.fromEntries(files.map((file) => [
+        file,
+        `https://api.apify.com/v2/key-value-stores/${defaultKeyValueStoreId}/records/${encodeURIComponent(file)}`,
+    ]))
+    : {};
 await Actor.setValue('OUTPUT', {
     site: host,
     pagesProcessed: pages.length,
     files,
-    note: 'Download the generated files from this run\'s Key-value store (Storage tab).',
+    downloadUrls,
+    note: 'Review the generated files before publishing them at your domain root.',
 });
 
 log.info(`Done. ${pages.length} pages → ${files.join(', ')} in the Key-value store.`);
