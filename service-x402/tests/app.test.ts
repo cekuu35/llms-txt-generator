@@ -5,7 +5,7 @@ import { createApp, PROTECTED_PATH, type ServiceOutput } from "../src/app.js";
 import {
   OKX_FACILITATOR_URL,
   X_LAYER_MAINNET,
-  X_LAYER_USDT0_ATTESTATION,
+  X_LAYER_USDT0_ASSET,
   type PaymentConfig,
 } from "../src/config.js";
 import { buildPaymentRoutes } from "../src/payment.js";
@@ -43,35 +43,26 @@ describe("public routes", () => {
     expect(JSON.stringify(result.body)).not.toContain("OKX");
   });
 
-  it("stays unconfigured for partial credentials or a non-six-decimal asset", async () => {
+  it("stays unconfigured when the pay-to address is invalid", async () => {
     const result = await request(createApp({
       env: {
         OKX_API_KEY: "placeholder-key",
         OKX_SECRET_KEY: "placeholder-secret",
         OKX_PASSPHRASE: "placeholder-passphrase",
-        PAY_TO_ADDRESS: "0x1111111111111111111111111111111111111111",
-        X402_NETWORK: "eip155:196",
-        X402_ASSET_ADDRESS: "0x2222222222222222222222222222222222222222",
-        X402_ASSET_DECIMALS: "18",
-        X402_ASSET_ATTESTATION: X_LAYER_USDT0_ATTESTATION,
+        PAY_TO_ADDRESS: "not-an-evm-address",
       },
     })).get("/health");
     expect(result.status).toBe(200);
     expect(result.body.paymentConfigured).toBe(false);
   });
 
-  it("constructs the official payment gate only for a complete six-decimal asset config", async () => {
+  it("constructs the official payment gate only for complete credentials and recipient", async () => {
     const result = await request(createApp({
       env: {
         OKX_API_KEY: "test-key",
         OKX_SECRET_KEY: "test-secret",
         OKX_PASSPHRASE: "test-passphrase",
-        OKX_BASE_URL: "https://web3.okx.com",
         PAY_TO_ADDRESS: "0x1111111111111111111111111111111111111111",
-        X402_NETWORK: "eip155:196",
-        X402_ASSET_ADDRESS: "0x2222222222222222222222222222222222222222",
-        X402_ASSET_DECIMALS: "6",
-        X402_ASSET_ATTESTATION: X_LAYER_USDT0_ATTESTATION,
       },
     })).get("/health");
     expect(result.status).toBe(200);
@@ -87,7 +78,7 @@ describe("public routes", () => {
       payTo: "0x1111111111111111111111111111111111111111",
       network: X_LAYER_MAINNET,
       amountAtomic: "250000",
-      assetAddress: "0x2222222222222222222222222222222222222222",
+      assetAddress: X_LAYER_USDT0_ASSET,
     };
     const routes = buildPaymentRoutes(config);
     expect(routes["POST /v1/generate-llms-files"].accepts).toEqual({

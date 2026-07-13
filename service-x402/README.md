@@ -60,14 +60,11 @@ Copy .env.example to a local secret store. Never commit values.
 - OKX_SECRET_KEY
 - OKX_PASSPHRASE
 - PAY_TO_ADDRESS
-- OKX_BASE_URL
-- X402_NETWORK (eip155:196 for X Layer mainnet)
-- X402_ASSET_ADDRESS — verified mainnet USDT contract chosen in the OKX flow
-- X402_ASSET_DECIMALS — currently 6
 
 Configuration is considered incomplete if any credential, receiving address,
-network, or explicit asset address is missing. This prevents an accidental free
-fallback or an ambiguous stablecoin listing.
+or recipient validation is missing. The facilitator, network and payment asset
+are pinned in code to the official OKX endpoint, X Layer mainnet and USDT0.
+Official asset reference: https://www.okx.com/en-ar/help/usdt0-faq
 
 ## Security model
 
@@ -89,7 +86,7 @@ of three and keeps resource use predictable for the first paid calls.
 ## Pre-deploy gates
 
 1. npm test and npm run build pass without internet-dependent tests.
-2. Confirm X402_ASSET_ADDRESS is the intended mainnet USDT asset.
+2. Confirm the deployed 402 advertises the pinned X Layer/USDT0 payment terms.
 3. Deploy with server-only variables; verify /health says payment configured.
 4. Valid request without a payment signature returns real HTTP 402 and a
    decodable x402 v2 PAYMENT-REQUIRED header.
