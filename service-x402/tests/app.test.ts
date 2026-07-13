@@ -32,6 +32,37 @@ const output: ServiceOutput = {
 };
 
 describe("public routes", () => {
+  it("publishes a bounded sales card and machine-readable API contract", async () => {
+    const app = createApp({ env: {} });
+    const root = await request(app).get("/");
+    const openapi = await request(app).get("/openapi.json");
+
+    expect(root.status).toBe(200);
+    expect(root.body).toMatchObject({
+      service: "site-context-forge",
+      status: "awaiting-payment-configuration",
+      pricing: { amount: "0.25", asset: "USDT0", network: "eip155:196" },
+      endpoints: {
+        generate: { method: "POST", path: PROTECTED_PATH, payment: "x402 exact" },
+      },
+    });
+    expect(root.body.claims.doesNotGuarantee).toContain("revenue");
+
+    expect(openapi.status).toBe(200);
+    expect(openapi.body.openapi).toBe("3.1.0");
+    expect(openapi.body.paths[PROTECTED_PATH].post.operationId).toBe("generateLlmsFiles");
+    expect(openapi.body.paths[PROTECTED_PATH].post.responses["402"].headers).toHaveProperty("PAYMENT-REQUIRED");
+    expect(openapi.body.paths[PROTECTED_PATH].post.responses["200"].headers).toHaveProperty("PAYMENT-RESPONSE");
+    expect(openapi.body.paths[PROTECTED_PATH].post.responses).toMatchObject({
+      "422": expect.any(Object),
+      "500": expect.any(Object),
+      "502": expect.any(Object),
+      "504": expect.any(Object),
+    });
+    expect(openapi.body.components.schemas).toHaveProperty("GenerationResponse");
+    expect(openapi.body.components.schemas).toHaveProperty("ErrorResponse");
+  });
+
   it("reports fail-closed payment readiness without exposing values", async () => {
     const result = await request(createApp({ env: {} })).get("/health");
     expect(result.status).toBe(200);

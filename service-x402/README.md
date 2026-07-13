@@ -5,12 +5,15 @@ content from a bounded crawl of a public HTTPS website.
 
 ## Current status
 
-**This service is not live or monetized yet.** A deployment must not be listed on
-OKX.AI until an unauthenticated request returns a real x402 v2 402 response and a
-real paid replay returns 200 with the documented output. The public preview is a
-static example and never performs a crawl.
+**The service is publicly deployed, but payment is not enabled or monetized yet.**
+It must not be listed on OKX.AI until an unauthenticated request returns a real
+x402 v2 402 response and a real paid replay returns 200 with the documented
+output. The public preview is a static example and never performs a crawl.
 
 ## API
+
+- GET / — public bounded service and pricing card.
+- GET /openapi.json — machine-readable OpenAPI 3.1 contract.
 
 - GET /health — public readiness without secret values.
 - GET /api/preview — public deterministic static example.

@@ -106,6 +106,126 @@ export function createApp(options: AppOptions = {}): express.Express {
   app.disable("x-powered-by");
   app.use(express.json({ limit: "8kb", strict: true }));
 
+  app.get("/", (_req, res) => {
+    res.json({
+      service: "site-context-forge",
+      description: "Generate review-ready llms.txt site context from a public HTTPS website.",
+      status: paymentConfigured && Boolean(paymentGate)
+        ? "payment-configuration-present-unverified"
+        : "awaiting-payment-configuration",
+      pricing: {
+        amount: "0.25",
+        asset: "USDT0",
+        network: "eip155:196",
+        unit: "per successful request",
+      },
+      endpoints: {
+        generate: { method: "POST", path: PROTECTED_PATH, payment: "x402 exact" },
+        preview: { method: "GET", path: "/api/preview", payment: "free" },
+        health: { method: "GET", path: "/health", payment: "free" },
+        openapi: { method: "GET", path: "/openapi.json", payment: "free" },
+      },
+      claims: {
+        generates: ["llms.txt", "llms-full.txt when requested", "page inventory"],
+        doesNotGuarantee: ["indexing", "rankings", "citations", "traffic", "revenue"],
+      },
+    });
+  });
+
+  app.get("/openapi.json", (_req, res) => {
+    res.json({
+      openapi: "3.1.0",
+      info: {
+        title: "Site Context Forge API",
+        version: "0.1.0",
+        description: "Paid x402 API for generating review-ready llms.txt site context.",
+      },
+      servers: [{ url: "https://service-x402.vercel.app" }],
+      paths: {
+        [PROTECTED_PATH]: {
+          post: {
+            operationId: "generateLlmsFiles",
+            summary: "Generate llms.txt site context files",
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    additionalProperties: false,
+                    required: ["websiteUrl"],
+                    properties: {
+                      websiteUrl: { type: "string", format: "uri", pattern: "^https://" },
+                      maxPages: { type: "integer", minimum: 1, maximum: 25, default: 20 },
+                      includeFullText: { type: "boolean", default: true },
+                      maxContentCharsPerPage: { type: "integer", minimum: 1000, maximum: 20000, default: 12000 },
+                    },
+                  },
+                },
+              },
+            },
+            responses: {
+              "200": {
+                description: "Generated files and page inventory.",
+                headers: { "PAYMENT-RESPONSE": { schema: { type: "string" } } },
+                content: { "application/json": { schema: { $ref: "#/components/schemas/GenerationResponse" } } },
+              },
+              "400": {
+                description: "Invalid request.",
+                content: { "application/json": { schema: { $ref: "#/components/schemas/ErrorResponse" } } },
+              },
+              "402": {
+                description: "x402 payment required.",
+                headers: {
+                  "PAYMENT-REQUIRED": { schema: { type: "string" } },
+                },
+              },
+              "403": { description: "URL is not eligible for crawling.", content: { "application/json": { schema: { $ref: "#/components/schemas/ErrorResponse" } } } },
+              "422": { description: "No eligible public pages were crawled.", content: { "application/json": { schema: { $ref: "#/components/schemas/ErrorResponse" } } } },
+              "500": { description: "Generation failed safely.", content: { "application/json": { schema: { $ref: "#/components/schemas/ErrorResponse" } } } },
+              "502": { description: "Payment facilitator failed or was unavailable.", content: { "application/json": { schema: { $ref: "#/components/schemas/ErrorResponse" } } } },
+              "503": { description: "Payment configuration is not ready.", content: { "application/json": { schema: { $ref: "#/components/schemas/ErrorResponse" } } } },
+              "504": { description: "The bounded crawl timed out.", content: { "application/json": { schema: { $ref: "#/components/schemas/ErrorResponse" } } } },
+            },
+          },
+        },
+      },
+      components: {
+        schemas: {
+          ErrorResponse: {
+            type: "object",
+            additionalProperties: false,
+            required: ["error"],
+            properties: {
+              error: {
+                type: "object",
+                additionalProperties: false,
+                required: ["code", "message"],
+                properties: { code: { type: "string" }, message: { type: "string" } },
+              },
+            },
+          },
+          GenerationResponse: {
+            type: "object",
+            required: ["site", "pagesProcessed", "files", "fileContents", "pages", "note"],
+            properties: {
+              site: { type: "string", format: "uri" },
+              pagesProcessed: { type: "integer", minimum: 1 },
+              files: { type: "array", items: { type: "string", enum: ["llms.txt", "llms-full.txt"] } },
+              fileContents: {
+                type: "object",
+                required: ["llmsTxt"],
+                properties: { llmsTxt: { type: "string" }, llmsFullTxt: { type: "string" } },
+              },
+              pages: { type: "array", items: { type: "object" } },
+              note: { type: "string" },
+            },
+          },
+        },
+      },
+    });
+  });
+
   app.get("/health", (_req, res) => {
     res.json({
       service: "site-context-forge",
