@@ -1,5 +1,5 @@
 import { lookup as dnsLookup } from "node:dns/promises";
-import type { LookupAddress } from "node:dns";
+import type { LookupAddress, LookupOptions } from "node:dns";
 import { Agent, fetch, type Dispatcher } from "undici";
 import { assertAddressAllowed, assertUrlAllowedStatic, SsrfError } from "./ssrf.js";
 
@@ -41,16 +41,35 @@ async function readBoundedBody(response: Response, limitBytes = 1_048_576): Prom
   return output;
 }
 
-function createPinnedAgent(addresses: readonly string[]): Dispatcher {
+type LookupCallback = (
+  error: NodeJS.ErrnoException | null,
+  address: string | LookupAddress[],
+  family?: number,
+) => void;
+
+export function createPinnedLookup(addresses: readonly string[]) {
   let cursor = 0;
+  return (_hostname: string, options: LookupOptions, callback: LookupCallback): void => {
+    const records = addresses.map((address) => ({
+      address,
+      family: address.includes(":") ? 6 : 4,
+    }));
+    const offset = cursor % records.length;
+    cursor += 1;
+    const rotated = [...records.slice(offset), ...records.slice(0, offset)];
+    if (options.all) {
+      callback(null, rotated);
+      return;
+    }
+    const selected = rotated[0];
+    callback(null, selected.address, selected.family);
+  };
+}
+
+function createPinnedAgent(addresses: readonly string[]): Dispatcher {
   return new Agent({
     connect: {
-      lookup(_hostname, _options, callback) {
-        const address = addresses[cursor % addresses.length];
-        cursor += 1;
-        const family = address.includes(":") ? 6 : 4;
-        callback(null, address, family);
-      },
+      lookup: createPinnedLookup(addresses),
     },
   });
 }
