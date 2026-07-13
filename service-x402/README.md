@@ -35,6 +35,17 @@ The response includes fileContents.llmsTxt and, when requested,
 fileContents.llmsFullTxt. Durable download URLs are deliberately not claimed:
 serverless local files do not persist.
 
+Every successful paid response also includes a delivery receipt with a unique
+`jobId`, completion time, duration and SHA-256 digest of the returned file
+contents. The same job ID and digest are returned in
+`X-Site-Context-Job-Id` and `X-Site-Context-Output-Sha256` headers.
+
+Successful paid deliveries emit one structured `site_context_delivery_completed`
+JSON event to the server log. The event contains the job ID, public site origin,
+page/file counts, duration and output digest; it never contains payment
+credentials, request headers or generated page content. This is the
+machine-readable evidence used by autonomous revenue monitoring.
+
 ## Local verification
 
 ~~~bash

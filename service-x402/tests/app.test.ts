@@ -53,6 +53,8 @@ describe("public routes", () => {
     expect(openapi.body.paths[PROTECTED_PATH].post.operationId).toBe("generateLlmsFiles");
     expect(openapi.body.paths[PROTECTED_PATH].post.responses["402"].headers).toHaveProperty("PAYMENT-REQUIRED");
     expect(openapi.body.paths[PROTECTED_PATH].post.responses["200"].headers).toHaveProperty("PAYMENT-RESPONSE");
+    expect(openapi.body.paths[PROTECTED_PATH].post.responses["200"].headers).toHaveProperty("X-Site-Context-Job-Id");
+    expect(openapi.body.paths[PROTECTED_PATH].post.responses["200"].headers).toHaveProperty("X-Site-Context-Output-Sha256");
     expect(openapi.body.paths[PROTECTED_PATH].post.responses).toMatchObject({
       "422": expect.any(Object),
       "500": expect.any(Object),
@@ -61,6 +63,14 @@ describe("public routes", () => {
     });
     expect(openapi.body.components.schemas).toHaveProperty("GenerationResponse");
     expect(openapi.body.components.schemas).toHaveProperty("ErrorResponse");
+    expect(openapi.body.components.schemas.GenerationResponse.required).toContain("delivery");
+    expect(openapi.body.components.schemas.GenerationResponse.properties.delivery.required).toEqual([
+      "jobId",
+      "status",
+      "completedAt",
+      "durationMs",
+      "outputSha256",
+    ]);
   });
 
   it("reports fail-closed payment readiness without exposing values", async () => {
@@ -195,6 +205,7 @@ describe("paid route ordering", () => {
 
   it("runs generation only after an injected successful payment gate", async () => {
     const order: string[] = [];
+    const deliveryLog = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const paymentGate: RequestHandler = (_req, _res, next) => {
       order.push("payment");
       next();
@@ -206,7 +217,27 @@ describe("paid route ordering", () => {
     const app = createApp({ env: {}, paymentConfigured: true, paymentGate, generate });
     const result = await request(app).post(PROTECTED_PATH).send(validInput);
     expect(result.status).toBe(200);
-    expect(result.body).toEqual(output);
+    expect(result.body).toMatchObject(output);
+    expect(result.body.delivery).toMatchObject({
+      status: "completed",
+      outputSha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+    });
+    expect(result.body.delivery.jobId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(Date.parse(result.body.delivery.completedAt)).not.toBeNaN();
+    expect(result.body.delivery.durationMs).toBeGreaterThanOrEqual(0);
+    expect(result.headers["x-site-context-job-id"]).toBe(result.body.delivery.jobId);
+    expect(result.headers["x-site-context-output-sha256"]).toBe(result.body.delivery.outputSha256);
+    expect(deliveryLog).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(deliveryLog.mock.calls[0]?.[0]))).toEqual({
+      event: "site_context_delivery_completed",
+      jobId: result.body.delivery.jobId,
+      site: output.site,
+      pagesProcessed: output.pagesProcessed,
+      files: output.files,
+      durationMs: result.body.delivery.durationMs,
+      outputSha256: result.body.delivery.outputSha256,
+    });
+    deliveryLog.mockRestore();
     expect(order).toEqual(["payment", "generation"]);
   });
 });

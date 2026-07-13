@@ -1,3 +1,4 @@
+import { createHash, randomUUID } from "node:crypto";
 import express, { type NextFunction, type Request, type RequestHandler, type Response } from "express";
 import { crawlWebsite, CrawlTimeoutError, NoPagesCrawledError } from "./crawler.js";
 import { getPaymentConfig } from "./config.js";
@@ -186,7 +187,13 @@ export function createApp(options: AppOptions = {}): express.Express {
             responses: {
               "200": {
                 description: "Generated files and page inventory.",
-                headers: { "PAYMENT-RESPONSE": { schema: { type: "string" } } },
+                headers: {
+                  "PAYMENT-RESPONSE": { schema: { type: "string" } },
+                  "X-Site-Context-Job-Id": { schema: { type: "string", format: "uuid" } },
+                  "X-Site-Context-Output-Sha256": {
+                    schema: { type: "string", pattern: "^[0-9a-f]{64}$" },
+                  },
+                },
                 content: { "application/json": { schema: { $ref: "#/components/schemas/GenerationResponse" } } },
               },
               "400": {
@@ -226,7 +233,7 @@ export function createApp(options: AppOptions = {}): express.Express {
           },
           GenerationResponse: {
             type: "object",
-            required: ["site", "pagesProcessed", "files", "fileContents", "pages", "note"],
+            required: ["site", "pagesProcessed", "files", "fileContents", "pages", "note", "delivery"],
             properties: {
               site: { type: "string", format: "uri" },
               pagesProcessed: { type: "integer", minimum: 1 },
@@ -238,6 +245,18 @@ export function createApp(options: AppOptions = {}): express.Express {
               },
               pages: { type: "array", items: { type: "object" } },
               note: { type: "string" },
+              delivery: {
+                type: "object",
+                additionalProperties: false,
+                required: ["jobId", "status", "completedAt", "durationMs", "outputSha256"],
+                properties: {
+                  jobId: { type: "string", format: "uuid" },
+                  status: { type: "string", const: "completed" },
+                  completedAt: { type: "string", format: "date-time" },
+                  durationMs: { type: "integer", minimum: 0 },
+                  outputSha256: { type: "string", pattern: "^[0-9a-f]{64}$" },
+                },
+              },
             },
           },
         },
@@ -291,8 +310,31 @@ export function createApp(options: AppOptions = {}): express.Express {
 
   const paidHandler: RequestHandler = async (_req, res) => {
     try {
+      const startedAt = Date.now();
       const input = res.locals.generationInput as GenerationInput;
-      res.json(await generate(input));
+      const output = await generate(input);
+      const delivery = {
+        jobId: randomUUID(),
+        status: "completed" as const,
+        completedAt: new Date().toISOString(),
+        durationMs: Date.now() - startedAt,
+        outputSha256: createHash("sha256")
+          .update(JSON.stringify(output.fileContents))
+          .digest("hex"),
+      };
+      console.info(JSON.stringify({
+        event: "site_context_delivery_completed",
+        jobId: delivery.jobId,
+        site: output.site,
+        pagesProcessed: output.pagesProcessed,
+        files: output.files,
+        durationMs: delivery.durationMs,
+        outputSha256: delivery.outputSha256,
+      }));
+      res
+        .set("X-Site-Context-Job-Id", delivery.jobId)
+        .set("X-Site-Context-Output-Sha256", delivery.outputSha256)
+        .json({ ...output, delivery });
     } catch (error) {
       errorResponse(error, res);
     }
