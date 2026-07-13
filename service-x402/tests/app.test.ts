@@ -1,7 +1,7 @@
 import type { RequestHandler } from "express";
 import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
-import { createApp, PROTECTED_PATH, type ServiceOutput } from "../src/app.js";
+import { createApp, NOFINS_PREVIEW_PATH, PROTECTED_PATH, type ServiceOutput } from "../src/app.js";
 import {
   OKX_FACILITATOR_URL,
   X_LAYER_MAINNET,
@@ -132,6 +132,17 @@ describe("public routes", () => {
     expect(first.body).toEqual(second.body);
     expect(first.body.preview).toBe(true);
     expect(generate).not.toHaveBeenCalled();
+  });
+
+  it("publishes a claim-bounded nofins proof preview", async () => {
+    const result = await request(createApp({ env: {} })).get(NOFINS_PREVIEW_PATH);
+    expect(result.status).toBe(200);
+    expect(result.headers["content-type"]).toContain("text/plain");
+    expect(result.text).toContain("nofins - freediving community. One person per buoy.");
+    expect(result.text).not.toContain("Phuket");
+    expect(result.text).not.toContain("school");
+    expect(result.text).not.toContain("price");
+    expect(result.headers["cache-control"]).toBe("public, max-age=300");
   });
 });
 

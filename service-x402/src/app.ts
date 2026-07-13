@@ -8,7 +8,25 @@ import { validateGenerationInput, type GenerationInput } from "./validation.js";
 import { SsrfError } from "./ssrf.js";
 
 export const PROTECTED_PATH = "/v1/generate-llms-files";
+export const NOFINS_PREVIEW_PATH = "/examples/nofins-llms.txt";
 const REVIEW_NOTE = "Review generated files before publishing them at the domain root.";
+const NOFINS_PREVIEW = `# nofins
+
+> nofins - freediving community. One person per buoy.
+
+## Community
+
+- [Home](https://nofins.com/): nofins community homepage.
+- [Freediving](https://nofins.com/senior/): Public freediving community page.
+- [Kids](https://nofins.com/junior/): Public kids community page.
+- [About](https://nofins.com/about/): Public information about nofins and Nick.
+
+## Review boundary
+
+- Draft only; maintainers should confirm titles and descriptions before publishing.
+- Deliberately stays within the owner's community-only scope and names no instructor other than Nick.
+- No indexing, ranking, citation, traffic, or revenue claim is made.
+`;
 
 export interface ServiceOutput {
   readonly site: string;
@@ -122,6 +140,7 @@ export function createApp(options: AppOptions = {}): express.Express {
       endpoints: {
         generate: { method: "POST", path: PROTECTED_PATH, payment: "x402 exact" },
         preview: { method: "GET", path: "/api/preview", payment: "free" },
+        sample: { method: "GET", path: NOFINS_PREVIEW_PATH, payment: "free" },
         health: { method: "GET", path: "/health", payment: "free" },
         openapi: { method: "GET", path: "/openapi.json", payment: "free" },
       },
@@ -251,6 +270,10 @@ export function createApp(options: AppOptions = {}): express.Express {
       note: REVIEW_NOTE,
       preview: true,
     });
+  });
+
+  app.get(NOFINS_PREVIEW_PATH, (_req, res) => {
+    res.type("text/plain").set("Cache-Control", "public, max-age=300").send(NOFINS_PREVIEW);
   });
 
   const readinessGate: RequestHandler = (_req, res, next) => {
