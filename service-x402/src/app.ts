@@ -167,3 +167,8 @@ export function createApp(options: AppOptions = {}): express.Express {
   });
   return app;
 }
+
+// Vercel's Express detector treats src/app.ts as the serverless entrypoint.
+// Keep a default Express export here while retaining createApp for tests.
+const app = createApp();
+export default app;
