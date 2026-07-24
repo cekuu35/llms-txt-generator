@@ -1,84 +1,69 @@
-# llms.txt Generator — Make Any Website AI-Readable (llms.txt + llms-full.txt)
+# llms.txt Generator — Make Any Website AI-Readable
 
-Generate **`llms.txt`** and **`llms-full.txt`** for any website — the emerging standard that tells AI models (ChatGPT, Claude, Perplexity, Gemini) what your site is about and how to reference it. Think **robots.txt, but for LLMs**.
+Generate **`llms.txt`** and **`llms-full.txt`** for a public website without installing a crawler. Point the Actor at a URL; it crawls same-domain pages, extracts clean main content, and saves two downloadable files plus a per-page dataset.
 
-Point this Actor at a URL. It crawls the site, extracts titles, descriptions, and clean main content, and produces two downloadable files ready to drop at your domain root.
+**[Run a 10-page test on Apify →](https://apify.com/nacred_corner/llms-txt-generator?utm_source=github&utm_medium=referral&utm_campaign=readme_primary)**
 
-**▶️ Run it now on Apify → https://apify.com/nacred_corner/llms-txt-generator** — no install, API-callable, pay per page.
+## Start small, then scale
 
-## Pricing you can predict
-
-Apify lists this Actor at **$5 per 1,000 results ($0.005 per result)**. The Actor writes one dataset result for each processed page, so your `maxPages` setting also gives you a clear result-cost ceiling:
+Apify currently lists this Actor at **$5 per 1,000 results ($0.005 per processed page)**. Set `maxPages` to control the result-charge ceiling before a run:
 
 - `maxPages: 10` → up to **$0.05** in result charges.
-- `maxPages: 50` (default) → up to **$0.25** in result charges.
+- `maxPages: 50` → up to **$0.25** in result charges.
 - `maxPages: 1000` → up to **$5.00** in result charges.
 
-Apify defines a separate, very small Actor-start event, and shows the live pricing before you run. Start with 10 pages, review the files, then raise `maxPages` only when you need broader coverage.
+Apify shows the live pricing before execution and may list a separate small Actor-start event. A 10-page run is the simplest way to inspect the output before processing a larger site.
 
-## Why llms.txt matters in 2026
+## What you receive
 
-- **RAG is the default architecture** for AI apps — `llms.txt` files are pre-structured, information-dense input made for retrieval pipelines.
-- **Google added `llms.txt` to Chrome Lighthouse's "Agentic Browsing" audit** (May 2026) as an AI-readiness check.
-- AI search visibility (GEO/AEO) increasingly depends on giving models a clean, structured map of your content.
+- **`llms.txt`** — a concise, linked index of the processed pages.
+- **`llms-full.txt`** — clean full text for documentation, retrieval, or RAG workflows.
+- **Exportable dataset** — one record per processed page with URL, title, description, and content length.
 
-## What this Actor does
+The generated files are stored in the run's key-value store, while page records can be exported as JSON or CSV.
 
-- Crawls a website (same-domain links, up to your `maxPages` limit).
-- Extracts `title`, meta `description`, and clean main content (`<article>`/`<main>` aware, strips nav/footer/scripts).
-- Builds **`llms.txt`** — a concise, linked index of your pages.
-- Builds **`llms-full.txt`** — the full text of every page for complete LLM/RAG ingestion.
-- Pushes a per-page dataset (URL, title, description) you can export as JSON/CSV.
+## Why use an Actor instead of a one-page web form?
 
-## Built for developers & scale (not just one page)
+- **API-callable:** run it from your own scripts through the Apify API.
+- **Batch-friendly:** repeat the same workflow across client or project sites.
+- **Pipeline-ready:** connect runs to n8n, cron, or CI workflows.
+- **Cost-controlled:** `maxPages` caps how many page results the Actor can produce.
 
-Unlike one-off web UI tools, this Actor is **API-callable, batch-friendly, and pipeline-ready**:
-- Generate `llms.txt` for **hundreds of client sites** programmatically.
-- Wire it into a **content/RAG pipeline** (n8n, cron, CI) via the Apify API.
-- Pay only for pages processed.
+Chrome Lighthouse includes `llms.txt` in its Agentic Browsing audits. Publishing a generated file can give machines a cleaner map of a site's content, but it does **not** guarantee crawling, rankings, citations, or traffic.
 
 ## Input
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `websiteUrl` | string | — | Site to crawl (required). |
-| `maxPages` | integer | 50 | Max pages processed (controls cost/runtime). |
+| `websiteUrl` | string | — | Public site to crawl (required). |
+| `maxPages` | integer | 50 | Maximum pages processed. |
 | `includeFullText` | boolean | true | Also generate `llms-full.txt`. |
-| `maxContentCharsPerPage` | integer | 12000 | Truncate very long pages in the full file. |
+| `maxContentCharsPerPage` | integer | 12000 | Truncate very long page content in the full file. |
 
-## Output
-
-- **Key-value store**: `llms.txt` and `llms-full.txt` (download from the run's Storage tab).
-- **Dataset**: one record per page (`url`, `title`, `description`, `contentChars`).
-
-## Example
+### Recommended first run
 
 ```json
 {
   "websiteUrl": "https://example.com",
-  "maxPages": 100,
+  "maxPages": 10,
   "includeFullText": true
 }
 ```
 
-Then place the resulting `llms.txt` at `https://example.com/llms.txt` (root, like `robots.txt`).
+Review the two files, then raise `maxPages` only if you need broader coverage. When ready, publish the reviewed `llms.txt` at your domain root, for example `https://example.com/llms.txt`.
 
-## Use cases
+## Good fit
 
-- **AI SEO / GEO**: make your site discoverable and quotable by AI assistants.
-- **RAG ingestion**: turn any docs/marketing site into clean, chunk-ready text.
-- **Agencies**: batch-generate `llms.txt` for every client site.
-- **AI agents**: give agents a structured, low-noise view of a domain.
+- Agencies generating the same deliverable across multiple client sites.
+- Developers preparing documentation or marketing sites for retrieval workflows.
+- Teams that need structured page text for an internal RAG pipeline.
+- Automation builders who want an API, dataset exports, and repeatable runs.
 
----
+## Important limits
 
-*Tip: run on your documentation or marketing site first, review `llms.txt`, then publish it at your domain root.*
+- The Actor processes public, reachable pages; it does not bypass authentication or access controls.
+- Generated content should be reviewed before publication.
+- Source-site permissions, copyright, privacy, and publication choices remain the user's responsibility.
+- `llms.txt` is a content map, not a promise of AI visibility or business results.
 
-
----
-
-## ▶️ Run it on Replit (no setup)
-[![Try on Replit](https://img.shields.io/badge/Try%20it%20on-Replit-F26207?logo=replit&logoColor=white)](https://replit.com/signup?referral=cnkkurtoglu&trackingContext=artifact_loading)
-
-Prefer building in the browser? Clone and run this on Replit in one click.
-New to Replit? **[Sign up for $20 in free credits »](https://replit.com/signup?referral=cnkkurtoglu&trackingContext=artifact_loading)**.
+**[Generate the files on Apify →](https://apify.com/nacred_corner/llms-txt-generator?utm_source=github&utm_medium=referral&utm_campaign=readme_bottom)**
