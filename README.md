@@ -6,6 +6,16 @@ Point this Actor at a URL. It crawls the site, extracts titles, descriptions, an
 
 **▶️ Run it now on Apify → https://apify.com/nacred_corner/llms-txt-generator** — no install, API-callable, pay per page.
 
+## Pricing you can predict
+
+Apify lists this Actor at **$5 per 1,000 results ($0.005 per result)**. The Actor writes one dataset result for each processed page, so your `maxPages` setting also gives you a clear result-cost ceiling:
+
+- `maxPages: 10` → up to **$0.05** in result charges.
+- `maxPages: 50` (default) → up to **$0.25** in result charges.
+- `maxPages: 1000` → up to **$5.00** in result charges.
+
+Apify defines a separate, very small Actor-start event, and shows the live pricing before you run. Start with 10 pages, review the files, then raise `maxPages` only when you need broader coverage.
+
 ## Why llms.txt matters in 2026
 
 - **RAG is the default architecture** for AI apps — `llms.txt` files are pre-structured, information-dense input made for retrieval pipelines.
