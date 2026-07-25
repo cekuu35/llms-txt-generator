@@ -1,12 +1,19 @@
 {
     "actorSpecification": 1,
     "name": "llms-txt-generator",
-    "title": "llms.txt Generator — Make Any Website AI-Readable",
-    "description": "Crawl a website and generate llms.txt + llms-full.txt for AI/LLM discoverability and RAG pipelines. Batch, API-callable, pay-per-page.",
-    "version": "0.1",
+    "title": "AI/RAG Readiness & llms.txt Change Monitor",
+    "description": "Generate llms.txt + llms-full.txt, build a hashed content manifest, and detect added or changed public pages across scheduled runs.",
+    "version": "0.2",
+    "minMemoryMbytes": 256,
+    "maxMemoryMbytes": 1024,
     "meta": {
         "templateId": "js-crawlee-cheerio"
     },
     "input": "./input_schema.json",
+    "output": "./output_schema.json",
+    "storages": {
+        "dataset": "./dataset_schema.json"
+    },
     "dockerfile": "./Dockerfile"
 }
+
