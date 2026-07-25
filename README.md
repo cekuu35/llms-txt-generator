@@ -1,69 +1,93 @@
-# llms.txt Generator — Make Any Website AI-Readable
+# AI/RAG Readiness & llms.txt Change Monitor
 
-Generate **`llms.txt`** and **`llms-full.txt`** for a public website without installing a crawler. Point the Actor at a URL; it crawls same-domain pages, extracts clean main content, and saves two downloadable files plus a per-page dataset.
+Generate review-ready **`llms.txt`** and **`llms-full.txt`** files, then keep them fresh. Each successful run also creates a hashed site manifest and compares it with the previous comparable run, so scheduled workflows can see which public pages were added or changed.
 
-**[Run a 10-page test on Apify →](https://apify.com/nacred_corner/llms-txt-generator?utm_source=github&utm_medium=referral&utm_campaign=readme_primary)**
+**[Run a 10-page test on Apify â†’](https://apify.com/nacred_corner/llms-txt-generator?utm_source=github&utm_medium=referral&utm_campaign=readme_primary)**
 
-## Start small, then scale
+## The result
 
-Apify currently lists this Actor at **$5 per 1,000 results ($0.005 per processed page)**. Set `maxPages` to control the result-charge ceiling before a run:
+One run produces:
 
-- `maxPages: 10` → up to **$0.05** in result charges.
-- `maxPages: 50` → up to **$0.25** in result charges.
-- `maxPages: 1000` → up to **$5.00** in result charges.
+- **`llms.txt`** â€” concise linked index for review and publication.
+- **`llms-full.txt`** â€” optional clean full text for documentation or RAG workflows.
+- **`manifest.json`** â€” normalized URLs, metadata, word counts, and SHA-256 content fingerprints.
+- **`changes.json`** â€” added, changed, unchanged, and possibly removed pages since the previous successful run.
+- **Dataset** â€” one visible record per processed page for JSON, CSV, Excel, API, n8n, or MCP workflows.
 
-Apify shows the live pricing before execution and may list a separate small Actor-start event. A 10-page run is the simplest way to inspect the output before processing a larger site.
+The Actor also records whether `robots.txt`, an existing `/llms.txt`, and `/sitemap.xml` were reachable before generation. It does not invent an â€œAI rankingâ€ score.
 
-## What you receive
+## Why this is more useful than a one-time generator
 
-- **`llms.txt`** — a concise, linked index of the processed pages.
-- **`llms-full.txt`** — clean full text for documentation, retrieval, or RAG workflows.
-- **Exportable dataset** — one record per processed page with URL, title, description, and content length.
+- **Schedule it:** re-run daily or weekly and receive deterministic content-change data.
+- **Automate it:** use the Apify API, webhooks, n8n, Make, CI, or an AI agent.
+- **Control cost:** `maxPages` limits visible page results and page-processing charges.
+- **Audit the input:** inspect titles, canonical URLs, meta robots, H1 counts, word counts, and content hashes.
+- **Keep a private baseline:** the previous manifest is stored in a named key-value store inside the Actor user's own Apify account.
 
-The generated files are stored in the run's key-value store, while page records can be exported as JSON or CSV.
+## Pricing and a safe first run
 
-## Why use an Actor instead of a one-page web form?
-
-- **API-callable:** run it from your own scripts through the Apify API.
-- **Batch-friendly:** repeat the same workflow across client or project sites.
-- **Pipeline-ready:** connect runs to n8n, cron, or CI workflows.
-- **Cost-controlled:** `maxPages` caps how many page results the Actor can produce.
-
-Chrome Lighthouse includes `llms.txt` in its Agentic Browsing audits. Publishing a generated file can give machines a cleaner map of a site's content, but it does **not** guarantee crawling, rankings, citations, or traffic.
-
-## Input
-
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `websiteUrl` | string | — | Public site to crawl (required). |
-| `maxPages` | integer | 50 | Maximum pages processed. |
-| `includeFullText` | boolean | true | Also generate `llms-full.txt`. |
-| `maxContentCharsPerPage` | integer | 12000 | Truncate very long page content in the full file. |
-
-### Recommended first run
+Apify currently lists this Actor at **$5 per 1,000 `page-processed` results ($0.005 per delivered page record)**. The platform may show a separate small Actor-start event. Check the live Pricing tab before every run.
 
 ```json
 {
   "websiteUrl": "https://example.com",
   "maxPages": 10,
-  "includeFullText": true
+  "includeFullText": true,
+  "trackChanges": true,
+  "respectRobotsTxt": true
 }
 ```
 
-Review the two files, then raise `maxPages` only if you need broader coverage. When ready, publish the reviewed `llms.txt` at your domain root, for example `https://example.com/llms.txt`.
+A 10-page run represents up to **$0.05** in page-result charges at the listed rate. The Actor stops gracefully when the run spending limit is reached and does not include an unpaid page in generated deliverables.
+
+## Change monitoring
+
+1. Run once to create the first manifest and baseline.
+2. Save the input as an Apify Task or schedule the same Actor input.
+3. On later successful runs, open `changes.json`.
+
+Example summary:
+
+```json
+{
+  "added": 2,
+  "changed": 1,
+  "unchanged": 46,
+  "removedCandidates": 1
+}
+```
+
+`removedCandidates` are URLs that appeared in the previous comparable crawl but not the current one. Confirm them before treating them as deleted; crawl limits, temporary failures, robots rules, or sitemap changes can affect coverage. A failed or spending-limit-truncated run does not overwrite the last clean baseline.
+
+## Inputs
+
+| Field | Default | Purpose |
+|---|---:|---|
+| `websiteUrl` | required | Public HTTP(S) site to process. Local/private-network targets are rejected. |
+| `maxPages` | `50` | Maximum visible page results and main cost control. |
+| `includeFullText` | `true` | Also generate `llms-full.txt`. |
+| `trackChanges` | `true` | Compare with and update the previous successful baseline. |
+| `respectRobotsTxt` | `true` | Skip URLs disallowed by `robots.txt`. |
+| `maxContentCharsPerPage` | `12000` | Maximum extracted characters used per page. |
+
+## What counts as a change?
+
+The Actor normalizes each URL and hashes the normalized page title, meta description, and extracted main text. Whitespace-only differences do not change the fingerprint. A title, description, or content change does.
 
 ## Good fit
 
-- Agencies generating the same deliverable across multiple client sites.
-- Developers preparing documentation or marketing sites for retrieval workflows.
-- Teams that need structured page text for an internal RAG pipeline.
-- Automation builders who want an API, dataset exports, and repeatable runs.
+- Agencies maintaining AI/RAG deliverables across client documentation sites.
+- Documentation teams that need a repeatable content inventory.
+- Developers feeding reviewed public content into retrieval pipelines.
+- Automation builders who need structured change events instead of manually comparing files.
 
 ## Important limits
 
-- The Actor processes public, reachable pages; it does not bypass authentication or access controls.
-- Generated content should be reviewed before publication.
-- Source-site permissions, copyright, privacy, and publication choices remain the user's responsibility.
-- `llms.txt` is a content map, not a promise of AI visibility or business results.
+- The Actor processes public pages only and does not bypass authentication or access controls.
+- HTTP-first extraction does not render client-only JavaScript content.
+- Generated files and removal candidates require human review before publication or destructive action.
+- `llms.txt` is an emerging, optional convention. Chrome Lighthouse's Agentic Browsing audit can check it, but publishing one does **not** guarantee crawling, ranking, citations, recommendations, or traffic.
+- Process only sites and content you are authorized to crawl and reuse. Source-site copyright, privacy, robots policy, and publication choices remain the user's responsibility.
 
-**[Generate the files on Apify →](https://apify.com/nacred_corner/llms-txt-generator?utm_source=github&utm_medium=referral&utm_campaign=readme_bottom)**
+**[Generate and monitor the files on Apify â†’](https://apify.com/nacred_corner/llms-txt-generator?utm_source=github&utm_medium=referral&utm_campaign=readme_bottom)**
+
