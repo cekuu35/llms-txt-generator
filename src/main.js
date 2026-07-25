@@ -1,5 +1,5 @@
 import { Actor } from 'apify';
-import { CheerioCrawler, Sitemap, log } from 'crawlee';
+import { CheerioCrawler, RobotsTxtFile, gotScraping, log } from 'crawlee';
 import {
     baselineRecordKey,
     buildManifest,
@@ -26,6 +26,7 @@ const maxContentCharsPerPage = Math.max(
 const includeFullText = input.includeFullText !== false;
 const trackChanges = input.trackChanges !== false;
 const respectRobotsTxt = input.respectRobotsTxt !== false;
+const crawlerUserAgent = 'AI-Readiness-Change-Monitor/0.2';
 
 let start;
 try {
@@ -49,32 +50,50 @@ function isSameSite(value) {
     }
 }
 
-async function probeResource(pathname) {
-    let current = new URL(pathname, start.origin);
-    for (let redirectCount = 0; redirectCount <= 3; redirectCount += 1) {
-        if (!isSameSite(current)) return { found: false, statusCode: null, reason: 'redirect-outside-site' };
-        try {
-            await assertPublicResolvedUrl(current);
-            const response = await fetch(current, {
-                redirect: 'manual',
-                signal: AbortSignal.timeout(10000),
-                headers: { 'user-agent': 'AI-Readiness-Change-Monitor/0.2' },
-            });
-            if (response.status >= 300 && response.status < 400 && response.headers.get('location')) {
-                current = new URL(response.headers.get('location'), current);
-                continue;
-            }
-            return {
-                found: response.ok,
-                statusCode: response.status,
-                finalUrl: current.toString(),
-                contentType: response.headers.get('content-type') ?? null,
-            };
-        } catch (error) {
-            return { found: false, statusCode: null, reason: error.name === 'TimeoutError' ? 'timeout' : 'fetch-failed' };
-        }
+async function requestSiteResource(pathname) {
+    const target = await assertPublicResolvedUrl(new URL(pathname, start.origin));
+    if (!isSameSite(target)) throw new Error('Resource target is outside the selected site.');
+
+    const response = await gotScraping({
+        url: target,
+        method: 'GET',
+        responseType: 'text',
+        throwHttpErrors: false,
+        maxRedirects: 3,
+        maxResponseSize: 512 * 1024,
+        timeout: { request: 10000 },
+        headers: { 'user-agent': crawlerUserAgent },
+        dnsLookup: publicDnsLookup,
+        hooks: {
+            beforeRedirect: [
+                async (updatedOptions) => {
+                    const redirectTarget = await assertPublicResolvedUrl(updatedOptions.url);
+                    if (!isSameSite(redirectTarget)) {
+                        throw new Error(`Redirect outside the selected site is not allowed: ${redirectTarget}`);
+                    }
+                    updatedOptions.dnsLookup = publicDnsLookup;
+                },
+            ],
+        },
+    });
+
+    if (!isSameSite(response.url)) throw new Error('Resource response resolved outside the selected site.');
+    return response;
+}
+
+async function probeResource(pathname, { includeBody = false } = {}) {
+    try {
+        const response = await requestSiteResource(pathname);
+        return {
+            found: response.statusCode >= 200 && response.statusCode < 300,
+            statusCode: response.statusCode,
+            finalUrl: response.url,
+            contentType: response.headers['content-type'] ?? null,
+            ...(includeBody ? { body: response.body } : {}),
+        };
+    } catch (error) {
+        return { found: false, statusCode: null, reason: error.name === 'TimeoutError' ? 'timeout' : 'fetch-failed' };
     }
-    return { found: false, statusCode: null, reason: 'too-many-redirects' };
 }
 
 const pagesByUrl = new Map();
@@ -82,34 +101,63 @@ const claimedUrls = new Set();
 let failedRequests = 0;
 let chargeLimitReached = false;
 let budgetBoundaryReached = false;
-let sitemap;
-let discoveryMode = 'links';
+let billingClosed = false;
+let billingCommitChain = Promise.resolve();
+const discoveryMode = 'links';
 
-try {
-    sitemap = await Sitemap.tryCommonNames(start.origin);
-    if (sitemap?.urls?.length) discoveryMode = 'sitemap';
-} catch {
-    log.info('Sitemap lookup failed; same-site link discovery will be used.');
-}
-
-const [robotsProbe, llmsProbe, sitemapProbe] = await Promise.all([
-    probeResource('/robots.txt'),
+const [robotsResource, llmsProbe, sitemapProbe] = await Promise.all([
+    probeResource('/robots.txt', { includeBody: true }),
     probeResource('/llms.txt'),
     probeResource('/sitemap.xml'),
 ]);
+const { body: robotsBody = '', ...robotsProbe } = robotsResource;
+const robotsFile = RobotsTxtFile.from(new URL('/robots.txt', start.origin).toString(), robotsResource.found ? robotsBody : '');
+
+function isAllowedByRobots(value) {
+    return !respectRobotsTxt || robotsFile.isAllowed(String(value), crawlerUserAgent);
+}
+
+if (!isAllowedByRobots(start)) {
+    await Actor.setValue('OUTPUT', { error: 'The start URL is disallowed by robots.txt.' });
+    await Actor.exit({ exitCode: 1 });
+}
 
 let crawler;
+async function commitPaidPage(normalizedUrl, page, datasetItem) {
+    const commit = billingCommitChain.then(async () => {
+        if (billingClosed) return false;
+
+        const chargeResult = await Actor.pushData(datasetItem, 'page-processed');
+        const currentItemWasRejected = chargeResult?.eventChargeLimitReached && chargeResult?.chargedCount === 0;
+        if (!currentItemWasRejected) pagesByUrl.set(normalizedUrl, page);
+
+        if (chargeResult?.eventChargeLimitReached) {
+            budgetBoundaryReached = true;
+            chargeLimitReached ||= currentItemWasRejected;
+            billingClosed = true;
+            log.info('The run spending boundary was reached; stopping the crawl gracefully.');
+            await crawler.autoscaledPool?.abort();
+        }
+
+        return !currentItemWasRejected;
+    });
+    billingCommitChain = commit.catch(() => undefined);
+    return commit;
+}
+
 crawler = new CheerioCrawler({
     maxRequestsPerCrawl: maxPages,
     maxConcurrency: Math.min(3, maxPages),
     sameDomainDelaySecs: 0.2,
     requestHandlerTimeoutSecs: 45,
-    respectRobotsTxtFile: respectRobotsTxt,
+    respectRobotsTxtFile: false,
     preNavigationHooks: [
         async ({ request }, gotOptions) => {
             const target = await assertPublicResolvedUrl(request.url);
             if (!isSameSite(target)) throw new Error(`Navigation outside the selected site is not allowed: ${target}`);
+            if (!isAllowedByRobots(target)) throw new Error(`robots.txt disallows navigation to ${target}`);
             gotOptions.dnsLookup = publicDnsLookup;
+            gotOptions.headers = { ...gotOptions.headers, 'user-agent': crawlerUserAgent };
             gotOptions.hooks ??= {};
             gotOptions.hooks.beforeRedirect = [
                 ...(gotOptions.hooks.beforeRedirect ?? []),
@@ -118,6 +166,10 @@ crawler = new CheerioCrawler({
                     if (!isSameSite(redirectTarget)) {
                         throw new Error(`Redirect outside the selected site is not allowed: ${redirectTarget}`);
                     }
+                    if (!isAllowedByRobots(redirectTarget)) {
+                        throw new Error(`robots.txt disallows redirect to ${redirectTarget}`);
+                    }
+                    updatedOptions.dnsLookup = publicDnsLookup;
                 },
             ];
         },
@@ -126,6 +178,10 @@ crawler = new CheerioCrawler({
         const loadedUrl = request.loadedUrl ?? request.url;
         if (!isSameSite(loadedUrl)) {
             log.warning(`Skipped redirect outside the selected site: ${request.url}`);
+            return;
+        }
+        if (!isAllowedByRobots(loadedUrl)) {
+            log.info(`Skipped by robots.txt: ${loadedUrl}`);
             return;
         }
 
@@ -193,6 +249,7 @@ crawler = new CheerioCrawler({
             strategy: 'same-domain',
             transformRequestFunction: (nextRequest) => {
                 if (!isSameSite(nextRequest.url)) return false;
+                if (!isAllowedByRobots(nextRequest.url)) return false;
                 if (/\.(png|jpe?g|gif|svg|webp|ico|pdf|zip|css|js|mjs|mp4|mp3|woff2?|ttf)(\?|#|$)/i.test(nextRequest.url)) {
                     return false;
                 }
@@ -201,16 +258,8 @@ crawler = new CheerioCrawler({
             },
         });
 
-        const chargeResult = await Actor.pushData(datasetItem, 'page-processed');
-        const currentItemWasRejected = chargeResult?.eventChargeLimitReached && chargeResult?.chargedCount === 0;
-        if (!currentItemWasRejected) pagesByUrl.set(normalizedUrl, page);
-
-        if (chargeResult?.eventChargeLimitReached) {
-            budgetBoundaryReached = true;
-            chargeLimitReached = currentItemWasRejected || pagesByUrl.size < maxPages;
-            log.info('The run spending boundary was reached; stopping the crawl gracefully.');
-            await crawler.autoscaledPool?.abort();
-        }
+        const committed = await commitPaidPage(normalizedUrl, page, datasetItem);
+        if (!committed) claimedUrls.delete(normalizedUrl);
         } catch (error) {
             if (!pagesByUrl.has(normalizedUrl)) claimedUrls.delete(normalizedUrl);
             throw error;
@@ -222,14 +271,8 @@ crawler = new CheerioCrawler({
     },
 });
 
-let startRequests = [start.toString()];
-if (sitemap?.urls?.length) {
-    const sitemapUrls = sitemap.urls.filter(isSameSite).map(normalizeUrl);
-    startRequests = [...new Set([normalizeUrl(start), ...sitemapUrls])].slice(0, maxPages);
-    log.info(`Sitemap found: ${sitemap.urls.length} URLs; queued up to ${maxPages}.`);
-} else {
-    log.info('No usable sitemap found; same-site link discovery will be used.');
-}
+const startRequests = [start.toString()];
+log.info('Using bounded same-site link discovery; sitemap availability is reported but external sitemap trees are not fetched.');
 
 log.info(`Crawling ${start} (maximum ${maxPages} visible page results)â€¦`);
 await crawler.run(startRequests);
@@ -312,8 +355,11 @@ let changes = {
     note: 'Change tracking was disabled for this run.',
 };
 let baselineUpdated = false;
+let historyStore;
+let historyRecordKey;
+let baselineEligible = false;
 if (trackChanges) {
-    const historyStore = await Actor.openKeyValueStore('LLMS_TXT_CHANGE_HISTORY');
+    historyStore = await Actor.openKeyValueStore('LLMS_TXT_CHANGE_HISTORY');
     const trackingIdentity = JSON.stringify({
         origin: start.origin,
         startUrl: normalizeUrl(start),
@@ -323,8 +369,8 @@ if (trackChanges) {
         respectRobotsTxt,
         fingerprintVersion: manifest.fingerprintVersion,
     });
-    const recordKey = baselineRecordKey(trackingIdentity);
-    const previousManifest = await historyStore.getValue(recordKey);
+    historyRecordKey = baselineRecordKey(trackingIdentity);
+    const previousManifest = await historyStore.getValue(historyRecordKey);
     changes = compareManifests(previousManifest, manifest);
     changes.coverageComparable = Boolean(
         previousManifest &&
@@ -334,7 +380,7 @@ if (trackChanges) {
         previousManifest.maxContentCharsPerPage === manifest.maxContentCharsPerPage &&
         previousManifest.respectRobotsTxt === manifest.respectRobotsTxt &&
         previousManifest.fingerprintVersion === manifest.fingerprintVersion &&
-        !chargeLimitReached &&
+        !budgetBoundaryReached &&
         failedRequests === 0,
     );
     changes.hasChanges = Boolean(
@@ -347,17 +393,14 @@ if (trackChanges) {
     if (!changes.coverageComparable && !changes.firstRun) {
         changes.note += ' Crawl settings or coverage changed, so removed candidates are not directly comparable.';
     }
-    if (!chargeLimitReached && failedRequests === 0) {
-        await historyStore.setValue(recordKey, manifest);
-        baselineUpdated = true;
-    }
+    baselineEligible = !budgetBoundaryReached && failedRequests === 0;
 }
 
 await Actor.setValue('manifest.json', JSON.stringify(manifest, null, 2), { contentType: 'application/json; charset=utf-8' });
 await Actor.setValue('changes.json', JSON.stringify(changes, null, 2), { contentType: 'application/json; charset=utf-8' });
 
 const files = ['llms.txt', ...(includeFullText ? ['llms-full.txt'] : []), 'manifest.json', 'changes.json'];
-await Actor.setValue('OUTPUT', {
+const runOutput = {
     site: host,
     pagesProcessed: pages.length,
     files,
@@ -371,7 +414,15 @@ await Actor.setValue('OUTPUT', {
     chargeLimitReached,
     budgetBoundaryReached,
     note: 'Download files from the Output or Storage tab. Schedule the same input to detect added and changed pages over time.',
-});
+};
+await Actor.setValue('OUTPUT', runOutput);
+
+if (baselineEligible) {
+    await historyStore.setValue(historyRecordKey, manifest);
+    baselineUpdated = true;
+    runOutput.baselineUpdated = true;
+    await Actor.setValue('OUTPUT', runOutput);
+}
 
 log.info(`Done. ${pages.length} paid page result(s); ${changes.summary.changed} changed and ${changes.summary.added} added.`);
 await Actor.exit();
