@@ -1,0 +1,45 @@
+{
+    "actorOutputSchemaVersion": 1,
+    "title": "AI/RAG readiness and change-monitor outputs",
+    "description": "Generated files, structured page records, and the run summary.",
+    "type": "object",
+    "properties": {
+        "summary": {
+            "type": "string",
+            "title": "Run summary",
+            "description": "Page count, change counts, coverage, and delivered files.",
+            "template": "{{links.apiDefaultKeyValueStoreUrl}}/records/OUTPUT"
+        },
+        "pages": {
+            "type": "string",
+            "title": "Processed pages",
+            "description": "One visible, charge-aligned dataset item per processed page.",
+            "template": "{{links.apiDefaultDatasetUrl}}/items"
+        },
+        "llmsTxt": {
+            "type": "string",
+            "title": "llms.txt",
+            "description": "Concise linked index ready for review and publication.",
+            "template": "{{links.apiDefaultKeyValueStoreUrl}}/records/llms.txt"
+        },
+        "llmsFullTxt": {
+            "type": "string",
+            "title": "llms-full.txt",
+            "description": "Combined clean page text when includeFullText is enabled.",
+            "template": "{{links.apiDefaultKeyValueStoreUrl}}/records/llms-full.txt"
+        },
+        "manifest": {
+            "type": "string",
+            "title": "Hashed content manifest",
+            "description": "Deterministic page inventory used for change detection.",
+            "template": "{{links.apiDefaultKeyValueStoreUrl}}/records/manifest.json"
+        },
+        "changes": {
+            "type": "string",
+            "title": "Changes since previous successful run",
+            "description": "Added, changed, unchanged, and possibly removed pages.",
+            "template": "{{links.apiDefaultKeyValueStoreUrl}}/records/changes.json"
+        }
+    }
+}
+
