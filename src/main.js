@@ -1,5 +1,7 @@
+import { Transform } from 'node:stream';
+import { pathToFileURL } from 'node:url';
 import { Actor } from 'apify';
-import { CheerioCrawler, RobotsTxtFile, gotScraping, log } from 'crawlee';
+import { CheerioCrawler, GotScrapingHttpClient, RobotsTxtFile, gotScraping, log } from 'crawlee';
 import {
     baselineRecordKey,
     buildManifest,
@@ -10,11 +12,98 @@ import {
     escapeMarkdown,
     normalizeUrl,
     assertPublicResolvedUrl,
+    applyPublicRequestPolicy,
     metadataFingerprint,
-    publicDnsLookup,
     validatePublicHttpUrl,
 } from './change-monitor.js';
 
+export const PAYLOAD_LIMITS = Object.freeze({
+    rawPageResponseBytes: 2 * 1024 * 1024,
+    urlChars: 2048,
+    titleChars: 300,
+    descriptionChars: 1000,
+    canonicalChars: 2048,
+    metaRobotsChars: 256,
+    totalDeliveredChars: 10_000_000,
+    nonPageOutputReserveChars: 1_000_000,
+});
+
+export const DEFAULT_DATASET_BILLING_EVENT = 'apify-default-dataset-item';
+
+export function truncateWithEllipsis(value, maxChars) {
+    const text = String(value ?? '');
+    if (text.length <= maxChars) return text;
+    if (maxChars <= 1) return text.slice(0, Math.max(0, maxChars));
+    return `${text.slice(0, maxChars - 1)}…`;
+}
+
+export function boundedCanonicalUrl(value, baseUrl) {
+    if (!value) return null;
+    try {
+        const canonicalUrl = new URL(value, baseUrl).toString();
+        return canonicalUrl.length <= PAYLOAD_LIMITS.canonicalChars ? canonicalUrl : null;
+    } catch {
+        return null;
+    }
+}
+
+// Conservative upper bound for all per-page appearances across the dataset,
+// llms files, manifest, readiness issues, and change report. Multipliers include
+// worst-case JSON/Markdown escaping; fixed overhead covers keys and hashes.
+export function estimateDeliveredPageChars(page) {
+    return (
+        String(page.content ?? '').length +
+        52 * String(page.url ?? '').length +
+        24 * String(page.title ?? '').length +
+        20 * String(page.description ?? '').length +
+        12 * String(page.canonicalUrl ?? '').length +
+        12 * String(page.metaRobots ?? '').length +
+        4096
+    );
+}
+
+export function createBodyLimitedHttpClient(
+    maxBytes = PAYLOAD_LIMITS.rawPageResponseBytes,
+    baseClient = new GotScrapingHttpClient(),
+) {
+    const assertBufferedBodySize = (body) => {
+        const serializedBody =
+            typeof body === 'string' || body == null
+                ? String(body ?? '')
+                : JSON.stringify(body);
+        const byteLength = Buffer.isBuffer(body) ? body.length : Buffer.byteLength(serializedBody, 'utf8');
+        if (byteLength > maxBytes) throw new Error(`Page response exceeds the ${maxBytes}-byte safety limit.`);
+    };
+
+    return {
+        async sendRequest(request) {
+            const response = await baseClient.sendRequest(request);
+            assertBufferedBodySize(response.body);
+            return response;
+        },
+        async stream(request, onRedirect) {
+            const response = await baseClient.stream(request, onRedirect);
+            let receivedBytes = 0;
+            const limiter = new Transform({
+                transform(chunk, encoding, callback) {
+                    const byteLength = Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(chunk, encoding);
+                    receivedBytes += byteLength;
+                    if (receivedBytes > maxBytes) {
+                        callback(new Error(`Page response exceeds the ${maxBytes}-byte safety limit.`));
+                        return;
+                    }
+                    callback(null, chunk);
+                },
+            });
+            response.stream.once('error', (error) => limiter.destroy(error));
+            limiter.once('error', () => response.stream.destroy());
+            response.stream.pipe(limiter);
+            return { ...response, stream: limiter };
+        },
+    };
+}
+
+export async function runActor() {
 await Actor.init();
 
 const input = (await Actor.getInput()) ?? {};
@@ -23,7 +112,8 @@ const maxContentCharsPerPage = Math.max(
     1000,
     Math.min(50000, Number.parseInt(input.maxContentCharsPerPage ?? 12000, 10) || 12000),
 );
-const maxDeliveredContentChars = 10_000_000;
+const maxDeliveredPayloadChars = PAYLOAD_LIMITS.totalDeliveredChars;
+const maxPagePayloadChars = maxDeliveredPayloadChars - PAYLOAD_LIMITS.nonPageOutputReserveChars;
 const includeFullText = input.includeFullText !== false;
 const trackChanges = input.trackChanges !== false;
 const respectRobotsTxt = input.respectRobotsTxt !== false;
@@ -32,6 +122,9 @@ const crawlerUserAgent = 'AI-Readiness-Change-Monitor/0.2';
 let start;
 try {
     start = await assertPublicResolvedUrl(input.websiteUrl);
+    if (start.toString().length > PAYLOAD_LIMITS.urlChars) {
+        throw new Error(`websiteUrl must not exceed ${PAYLOAD_LIMITS.urlChars} characters.`);
+    }
 } catch (error) {
     await Actor.setValue('OUTPUT', { error: error.message });
     await Actor.exit({ exitCode: 1 });
@@ -55,16 +148,14 @@ async function requestSiteResource(pathname) {
     const target = await assertPublicResolvedUrl(new URL(pathname, start.origin));
     if (!isSameSite(target)) throw new Error('Resource target is outside the selected site.');
 
-    const request = await gotScraping({
+    const request = await gotScraping(applyPublicRequestPolicy({
         url: target,
         method: 'GET',
         isStream: true,
-        http2: false,
         throwHttpErrors: false,
         maxRedirects: 3,
         timeout: { request: 10000 },
         headers: { 'user-agent': crawlerUserAgent },
-        dnsLookup: publicDnsLookup,
         hooks: {
             beforeRedirect: [
                 async (updatedOptions) => {
@@ -72,12 +163,11 @@ async function requestSiteResource(pathname) {
                     if (!isSameSite(redirectTarget)) {
                         throw new Error(`Redirect outside the selected site is not allowed: ${redirectTarget}`);
                     }
-                    updatedOptions.dnsLookup = publicDnsLookup;
-                    updatedOptions.http2 = false;
+                    applyPublicRequestPolicy(updatedOptions);
                 },
             ],
         },
-    });
+    }));
 
     return new Promise((resolve, reject) => {
         const chunks = [];
@@ -140,6 +230,7 @@ let chargeLimitReached = false;
 let budgetBoundaryReached = false;
 let contentLimitReached = false;
 let deliveredContentChars = 0;
+let estimatedDeliveredPayloadChars = 0;
 let billingClosed = false;
 let billingCommitChain = Promise.resolve();
 const discoveryMode = 'links';
@@ -173,36 +264,48 @@ let crawler;
 async function commitPaidPage(normalizedUrl, page, datasetItem) {
     const commit = billingCommitChain.then(async () => {
         if (billingClosed) return false;
-        if (deliveredContentChars + page.content.length > maxDeliveredContentChars) {
+        const estimatedPageChars = estimateDeliveredPageChars(page);
+        if (estimatedDeliveredPayloadChars + estimatedPageChars > maxPagePayloadChars) {
             contentLimitReached = true;
             billingClosed = true;
-            log.info('The safe total content limit was reached before charging the current page; stopping gracefully.');
+            log.info('The safe total delivered-payload limit was reached before charging the current page; stopping gracefully.');
             await crawler.autoscaledPool?.abort();
             return false;
         }
 
-        const chargeResult = await Actor.pushData(datasetItem, 'page-processed');
-        const currentItemWasRejected = chargeResult?.eventChargeLimitReached && chargeResult?.chargedCount === 0;
-        if (!currentItemWasRejected) {
-            pagesByUrl.set(normalizedUrl, page);
-            deliveredContentChars += page.content.length;
+        const chargingManager = Actor.getChargingManager();
+        if (chargingManager.calculateMaxEventChargeCountWithinLimit(DEFAULT_DATASET_BILLING_EVENT) <= 0) {
+            budgetBoundaryReached = true;
+            chargeLimitReached = true;
+            billingClosed = true;
+            log.info('The run spending limit was reached before charging the current page; stopping gracefully.');
+            await crawler.autoscaledPool?.abort();
+            return false;
         }
 
-        if (chargeResult?.eventChargeLimitReached) {
+        // The live Actor is priced through Apify's synthetic default-dataset-item event.
+        // Passing a second argument here would create a separate custom event and would
+        // not match the existing $5 / 1,000-result monetization configuration.
+        await Actor.pushData(datasetItem);
+        pagesByUrl.set(normalizedUrl, page);
+        deliveredContentChars += page.content.length;
+        estimatedDeliveredPayloadChars += estimatedPageChars;
+
+        if (chargingManager.calculateMaxEventChargeCountWithinLimit(DEFAULT_DATASET_BILLING_EVENT) <= 0) {
             budgetBoundaryReached = true;
-            chargeLimitReached ||= currentItemWasRejected;
             billingClosed = true;
-            log.info('The run spending boundary was reached; stopping the crawl gracefully.');
+            log.info('The run spending boundary was reached after the paid page was delivered; stopping gracefully.');
             await crawler.autoscaledPool?.abort();
         }
 
-        return !currentItemWasRejected;
+        return true;
     });
     billingCommitChain = commit.catch(() => undefined);
     return commit;
 }
 
 crawler = new CheerioCrawler({
+    httpClient: createBodyLimitedHttpClient(),
     maxRequestsPerCrawl: maxPages,
     maxConcurrency: Math.min(3, maxPages),
     sameDomainDelaySecs: 0.2,
@@ -213,8 +316,7 @@ crawler = new CheerioCrawler({
             const target = await assertPublicResolvedUrl(request.url);
             if (!isSameSite(target)) throw new Error(`Navigation outside the selected site is not allowed: ${target}`);
             if (!isAllowedByRobots(target)) throw new Error(`robots.txt disallows navigation to ${target}`);
-            gotOptions.dnsLookup = publicDnsLookup;
-            gotOptions.http2 = false;
+            applyPublicRequestPolicy(gotOptions);
             gotOptions.headers = { ...gotOptions.headers, 'user-agent': crawlerUserAgent };
             gotOptions.hooks ??= {};
             gotOptions.hooks.beforeRedirect = [
@@ -227,8 +329,7 @@ crawler = new CheerioCrawler({
                     if (!isAllowedByRobots(redirectTarget)) {
                         throw new Error(`robots.txt disallows redirect to ${redirectTarget}`);
                     }
-                    updatedOptions.dnsLookup = publicDnsLookup;
-                    updatedOptions.http2 = false;
+                    applyPublicRequestPolicy(updatedOptions);
                 },
             ];
         },
@@ -245,20 +346,34 @@ crawler = new CheerioCrawler({
         }
 
         const normalizedUrl = normalizeUrl(loadedUrl);
+        if (normalizedUrl.length > PAYLOAD_LIMITS.urlChars) {
+            request.noRetry = true;
+            log.warning(`Skipped URL longer than ${PAYLOAD_LIMITS.urlChars} characters: ${request.url}`);
+            return;
+        }
         if (claimedUrls.has(normalizedUrl)) return;
         claimedUrls.add(normalizedUrl);
 
         try {
 
-        const title = ($('title').first().text() || $('h1').first().text() || normalizedUrl).trim();
-        const description = (
-            $('meta[name="description"]').attr('content') ||
-            $('meta[property="og:description"]').attr('content') ||
-            ''
-        ).trim();
+        const title = truncateWithEllipsis(
+            ($('title').first().text() || $('h1').first().text() || normalizedUrl).trim(),
+            PAYLOAD_LIMITS.titleChars,
+        );
+        const description = truncateWithEllipsis(
+            (
+                $('meta[name="description"]').attr('content') ||
+                $('meta[property="og:description"]').attr('content') ||
+                ''
+            ).trim(),
+            PAYLOAD_LIMITS.descriptionChars,
+        );
         const canonical = $('link[rel="canonical"]').attr('href');
-        const canonicalUrl = canonical ? new URL(canonical, loadedUrl).toString() : null;
-        const metaRobots = ($('meta[name="robots"]').attr('content') || '').trim();
+        const canonicalUrl = boundedCanonicalUrl(canonical, loadedUrl);
+        const metaRobots = truncateWithEllipsis(
+            ($('meta[name="robots"]').attr('content') || '').trim(),
+            PAYLOAD_LIMITS.metaRobotsChars,
+        );
         const h1Count = $('h1').length;
 
         $('script, style, nav, footer, header, aside, noscript, svg, form, iframe').remove();
@@ -274,7 +389,7 @@ crawler = new CheerioCrawler({
             .replace(/[ \t]{2,}/g, ' ')
             .replace(/\n{3,}/g, '\n\n')
             .trim();
-        if (content.length > maxContentCharsPerPage) content = `${content.slice(0, maxContentCharsPerPage)}â€¦`;
+        content = truncateWithEllipsis(content, maxContentCharsPerPage);
 
         const page = {
             url: normalizedUrl,
@@ -309,6 +424,7 @@ crawler = new CheerioCrawler({
             transformRequestFunction: (nextRequest) => {
                 if (!isSameSite(nextRequest.url)) return false;
                 if (!isAllowedByRobots(nextRequest.url)) return false;
+                if (nextRequest.url.length > PAYLOAD_LIMITS.urlChars) return false;
                 if (/\.(png|jpe?g|gif|svg|webp|ico|pdf|zip|css|js|mjs|mp4|mp3|woff2?|ttf)(\?|#|$)/i.test(nextRequest.url)) {
                     return false;
                 }
@@ -333,7 +449,7 @@ crawler = new CheerioCrawler({
 const startRequests = [start.toString()];
 log.info('Using bounded same-site link discovery; sitemap availability is reported but external sitemap trees are not fetched.');
 
-log.info(`Crawling ${start} (maximum ${maxPages} visible page results)â€¦`);
+log.info(`Crawling ${start} (maximum ${maxPages} visible page results)…`);
 await crawler.run(startRequests);
 
 const pages = [...pagesByUrl.values()].sort((a, b) => {
@@ -394,6 +510,8 @@ manifest.crawl = {
     budgetBoundaryReached,
     contentLimitReached,
     deliveredContentChars,
+    estimatedDeliveredPayloadChars,
+    deliveredPayloadLimitChars: maxDeliveredPayloadChars,
 };
 manifest.issues = buildReadinessIssues(manifest);
 manifest.issueCount = manifest.issues.length;
@@ -484,6 +602,8 @@ const runOutput = {
     budgetBoundaryReached,
     contentLimitReached,
     deliveredContentChars,
+    estimatedDeliveredPayloadChars,
+    deliveredPayloadLimitChars: maxDeliveredPayloadChars,
     note: 'Download files from the Output or Storage tab. Schedule the same input to detect added and changed pages over time.',
 };
 await Actor.setValue('OUTPUT', runOutput);
@@ -495,4 +615,9 @@ if (baselineEligible) {
 
 log.info(`Done. ${pages.length} paid page result(s); ${changes.summary.changed} changed and ${changes.summary.added} added.`);
 await Actor.exit();
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+    await runActor();
+}
 
