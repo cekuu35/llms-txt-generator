@@ -1,34 +1,46 @@
 {
-    "title": "llms.txt Generator Input",
+    "title": "AI/RAG Readiness & llms.txt Monitor Input",
     "type": "object",
     "schemaVersion": 1,
     "properties": {
         "websiteUrl": {
-            "title": "Website URL",
+            "title": "Public website URL",
             "type": "string",
             "editor": "textfield",
-            "description": "The site to make AI-readable. The crawler starts here and follows same-domain links.",
+            "description": "The public HTTP(S) site to process. Local and private-network targets are rejected.",
             "prefill": "https://docs.apify.com",
             "example": "https://example.com"
         },
         "maxPages": {
-            "title": "Max pages to crawl",
+            "title": "Maximum visible page results",
             "type": "integer",
-            "description": "Upper limit on pages processed. Controls cost and runtime.",
+            "description": "Upper limit on page results. This is the main run-cost control.",
             "default": 50,
             "minimum": 1,
             "maximum": 5000
         },
         "includeFullText": {
-            "title": "Also generate llms-full.txt",
+            "title": "Generate llms-full.txt",
             "type": "boolean",
-            "description": "Generate the full-content file (all page text) in addition to the concise llms.txt index.",
+            "description": "Also create a combined clean-text file for review or RAG ingestion.",
+            "default": true
+        },
+        "trackChanges": {
+            "title": "Compare with the previous successful run",
+            "type": "boolean",
+            "description": "Store a hashed manifest in your Apify account and report added, changed, unchanged, and possibly removed pages next time.",
+            "default": true
+        },
+        "respectRobotsTxt": {
+            "title": "Respect robots.txt",
+            "type": "boolean",
+            "description": "Skip URLs that robots.txt disallows for the crawler. Recommended for responsible public-site processing.",
             "default": true
         },
         "maxContentCharsPerPage": {
-            "title": "Max content characters per page",
+            "title": "Maximum content characters per page",
             "type": "integer",
-            "description": "Truncate very long pages in llms-full.txt to keep the output manageable.",
+            "description": "Truncate very long page content in llms-full.txt and the change fingerprint.",
             "default": 12000,
             "minimum": 1000,
             "maximum": 100000
@@ -36,3 +48,4 @@
     },
     "required": ["websiteUrl"]
 }
+
