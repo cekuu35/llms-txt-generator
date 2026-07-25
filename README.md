@@ -16,6 +16,8 @@ One run produces:
 
 The Actor also records whether `robots.txt`, an existing `/llms.txt`, and `/sitemap.xml` were reachable before generation. It does not invent an “AI ranking” score.
 
+> **Need a repeatable client deliverable from verified website observations?** The separate **[AI-Ready Website Audit Kit — $49 one-time](https://cengokurtoglu.gumroad.com/l/ai-ready-website-audit-kit?wanted=true&utm_source=github&utm_medium=referral&utm_campaign=ai_ready_audit_kit&utm_content=llms_txt_generator_readme_cross_sell)** turns verified observations into a transparent 100-point operational-readiness score, prioritized gaps, and an editable client report. It includes a dependency-free Node.js scorer, a 19-page playbook, regression tests, and reusable templates; it does not include this Actor or guarantee rankings, AI citations, traffic, or revenue.
+
 ## Why this is more useful than a one-time generator
 
 - **Schedule it:** re-run daily or weekly and receive deterministic content-change data.
@@ -82,12 +84,6 @@ The Actor normalizes each URL and hashes the normalized page title, meta descrip
 - Documentation teams that need a repeatable content inventory.
 - Developers feeding reviewed public content into retrieval pipelines.
 - Automation builders who need structured change events instead of manually comparing files.
-
-## Need a client-ready website audit workflow?
-
-**[Get the $49 AI-Ready Website Audit Kit →](https://cengokurtoglu.gumroad.com/l/ai-ready-website-audit-kit?utm_source=github&utm_medium=referral&utm_campaign=ai_ready_audit_kit&utm_content=llms_txt_generator_readme)**
-
-Use the Actor to collect public-site facts, then turn reviewed evidence into a deterministic 100-point audit and editable client report. The separate Gumroad kit includes a dependency-free Node.js scorer, evidence ledger, 19-page playbook, regression tests, and implementation templates. It does not guarantee rankings, AI citations, traffic, or revenue.
 
 ## Important limits
 
