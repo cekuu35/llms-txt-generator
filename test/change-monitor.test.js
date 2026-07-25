@@ -102,6 +102,7 @@ test('manifest sorting, record keys, and Markdown escaping are deterministic', (
         fingerprintVersion: 1,
     });
     assert.deepEqual(manifest.pages.map((page) => page.url), ['https://example.com/a', 'https://example.com/b']);
+    assert.equal(buildManifest(pages).fingerprintVersion, 2);
     assert.equal(baselineRecordKey('https://example.com'), baselineRecordKey('https://example.com'));
     assert.match(baselineRecordKey('https://example.com'), /^SITE_[a-f0-9]{32}$/);
     assert.notEqual(
