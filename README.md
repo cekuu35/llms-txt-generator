@@ -83,6 +83,12 @@ The Actor normalizes each URL and hashes the normalized page title, meta descrip
 - Developers feeding reviewed public content into retrieval pipelines.
 - Automation builders who need structured change events instead of manually comparing files.
 
+## Need a client-ready website audit workflow?
+
+**[Get the $49 AI-Ready Website Audit Kit →](https://cengokurtoglu.gumroad.com/l/ai-ready-website-audit-kit?utm_source=github&utm_medium=referral&utm_campaign=ai_ready_audit_kit&utm_content=llms_txt_generator_readme)**
+
+Use the Actor to collect public-site facts, then turn reviewed evidence into a deterministic 100-point audit and editable client report. The separate Gumroad kit includes a dependency-free Node.js scorer, evidence ledger, 19-page playbook, regression tests, and implementation templates. It does not guarantee rankings, AI citations, traffic, or revenue.
+
 ## Important limits
 
 - The Actor processes public pages only and does not bypass authentication or access controls.
