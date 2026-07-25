@@ -14,3 +14,4 @@ RUN npm --quiet set progress=false \
 COPY . ./
 
 CMD npm start --silent
+
