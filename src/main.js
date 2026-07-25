@@ -29,6 +29,7 @@ export const PAYLOAD_LIMITS = Object.freeze({
 });
 
 export const DEFAULT_DATASET_BILLING_EVENT = 'apify-default-dataset-item';
+export const CHANGE_HISTORY_STORE_NAME = 'llms-txt-change-history';
 
 export function truncateWithEllipsis(value, maxChars) {
     const text = String(value ?? '');
@@ -541,7 +542,7 @@ let historyStore;
 let historyRecordKey;
 let baselineEligible = false;
 if (trackChanges) {
-    historyStore = await Actor.openKeyValueStore('LLMS_TXT_CHANGE_HISTORY');
+    historyStore = await Actor.openKeyValueStore(CHANGE_HISTORY_STORE_NAME);
     const trackingIdentity = JSON.stringify({
         origin: start.origin,
         startUrl: normalizeUrl(start),
