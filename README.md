@@ -16,7 +16,7 @@ One run produces:
 
 The Actor also records whether `robots.txt`, an existing `/llms.txt`, and `/sitemap.xml` were reachable before generation. It does not invent an “AI ranking” score.
 
-> **Need a repeatable client deliverable from verified website observations?** The separate **[AI-Ready Website Audit Kit — $49 one-time](https://cengokurtoglu.gumroad.com/l/ai-ready-website-audit-kit?wanted=true&utm_source=github&utm_medium=referral&utm_campaign=ai_ready_audit_kit&utm_content=llms_txt_generator_readme_cross_sell)** turns verified observations into a transparent 100-point operational-readiness score, prioritized gaps, and an editable client report. It includes a dependency-free Node.js scorer, a 19-page playbook, regression tests, and reusable templates; it does not include this Actor or guarantee rankings, AI citations, traffic, or revenue.
+> **Need a repeatable client deliverable from verified website observations?** The separate **[AI-Ready Website Audit Kit — $49 one-time](https://cengokurtoglu.gumroad.com/l/ai-ready-website-audit-kit?wanted=true&utm_source=github&utm_medium=referral&utm_campaign=ai_ready_audit_kit&utm_content=llms_txt_generator_readme_cross_sell)** turns verified observations into a transparent 100-point operational-readiness score, prioritized gaps, and an editable client report. It includes a dependency-free Node.js scorer, a 19-page playbook, regression tests, and reusable templates; it does not include this Actor or guarantee rankings, AI citations, traffic, or revenue. It is built and maintained by an independent solo developer; purchases support maintenance, documentation, and future practical tools.
 
 ## Why this is more useful than a one-time generator
 
