@@ -1,0 +1,44 @@
+{
+    "actorSpecification": 1,
+    "fields": {
+        "type": "object",
+        "properties": {
+            "url": { "type": "string", "format": "uri" },
+            "title": { "type": "string" },
+            "description": { "type": "string" },
+            "contentChars": { "type": "integer" },
+            "wordCount": { "type": "integer" },
+            "contentHash": { "type": "string" },
+            "bodyHash": { "type": "string" },
+            "metadataHash": { "type": "string" },
+            "canonicalUrl": { "type": ["string", "null"] },
+            "metaRobots": { "type": "string" },
+            "h1Count": { "type": "integer" }
+        },
+        "required": ["url", "title", "contentChars", "wordCount", "contentHash", "bodyHash", "metadataHash"]
+    },
+    "views": {
+        "overview": {
+            "title": "Processed pages",
+            "transformation": {
+                "fields": ["url", "title", "wordCount", "contentChars", "h1Count", "canonicalUrl", "metaRobots", "contentHash", "bodyHash", "metadataHash"]
+            },
+            "display": {
+                "component": "table",
+                "properties": {
+                    "url": { "label": "URL", "format": "link" },
+                    "title": { "label": "Title", "format": "text" },
+                    "wordCount": { "label": "Words", "format": "number" },
+                    "contentChars": { "label": "Characters", "format": "number" },
+                    "h1Count": { "label": "H1 count", "format": "number" },
+                    "canonicalUrl": { "label": "Canonical", "format": "link" },
+                    "metaRobots": { "label": "Meta robots", "format": "text" },
+                    "contentHash": { "label": "Combined SHA-256", "format": "text" },
+                    "bodyHash": { "label": "Body SHA-256", "format": "text" },
+                    "metadataHash": { "label": "Metadata SHA-256", "format": "text" }
+                }
+            }
+        }
+    }
+}
+
