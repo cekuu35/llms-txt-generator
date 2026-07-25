@@ -17,7 +17,7 @@
             "description": "Upper limit on page results. This is the main run-cost control.",
             "default": 50,
             "minimum": 1,
-            "maximum": 5000
+            "maximum": 1000
         },
         "includeFullText": {
             "title": "Generate llms-full.txt",
@@ -43,7 +43,7 @@
             "description": "Truncate very long page content in llms-full.txt and the change fingerprint.",
             "default": 12000,
             "minimum": 1000,
-            "maximum": 100000
+            "maximum": 50000
         }
     },
     "required": ["websiteUrl"]
