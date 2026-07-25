@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { gotScraping } from 'crawlee';
 import {
+    applyPublicRequestPolicy,
     baselineRecordKey,
     buildManifest,
     buildReadinessIssues,
@@ -9,8 +11,30 @@ import {
     escapeMarkdown,
     isBlockedIpAddress,
     normalizeUrl,
+    publicDnsLookup,
     validatePublicHttpUrl,
 } from '../src/change-monitor.js';
+
+test('public request policy disables got-scraping ALPN probes and keeps guarded DNS lookup', () => {
+    const context = { useHeaderGenerator: true };
+    const options = applyPublicRequestPolicy({ http2: true, useHeaderGenerator: true, context });
+
+    assert.equal(options.dnsLookup, publicDnsLookup);
+    assert.equal(options.http2, false);
+    assert.equal(options.useHeaderGenerator, false);
+    assert.equal(options.context.useHeaderGenerator, false);
+});
+
+test('got-scraping HTTPS reaches the guarded DNS lookup', async () => {
+    await assert.rejects(
+        gotScraping(applyPublicRequestPolicy({
+            url: 'https://localhost/',
+            retry: { limit: 0 },
+            timeout: { request: 2000 },
+        })),
+        /non-public address/,
+    );
+});
 
 test('accepts public HTTP(S) URLs and normalizes fragments', () => {
     assert.equal(validatePublicHttpUrl('https://example.com/docs#top').toString(), 'https://example.com/docs');
