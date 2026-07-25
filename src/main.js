@@ -18,11 +18,12 @@ import {
 await Actor.init();
 
 const input = (await Actor.getInput()) ?? {};
-const maxPages = Math.max(1, Math.min(5000, Number.parseInt(input.maxPages ?? 50, 10) || 50));
+const maxPages = Math.max(1, Math.min(1000, Number.parseInt(input.maxPages ?? 50, 10) || 50));
 const maxContentCharsPerPage = Math.max(
     1000,
-    Math.min(100000, Number.parseInt(input.maxContentCharsPerPage ?? 12000, 10) || 12000),
+    Math.min(50000, Number.parseInt(input.maxContentCharsPerPage ?? 12000, 10) || 12000),
 );
+const maxDeliveredContentChars = 10_000_000;
 const includeFullText = input.includeFullText !== false;
 const trackChanges = input.trackChanges !== false;
 const respectRobotsTxt = input.respectRobotsTxt !== false;
@@ -58,6 +59,7 @@ async function requestSiteResource(pathname) {
         url: target,
         method: 'GET',
         isStream: true,
+        http2: false,
         throwHttpErrors: false,
         maxRedirects: 3,
         timeout: { request: 10000 },
@@ -71,6 +73,7 @@ async function requestSiteResource(pathname) {
                         throw new Error(`Redirect outside the selected site is not allowed: ${redirectTarget}`);
                     }
                     updatedOptions.dnsLookup = publicDnsLookup;
+                    updatedOptions.http2 = false;
                 },
             ],
         },
@@ -118,7 +121,15 @@ async function probeResource(pathname, { includeBody = false } = {}) {
             ...(includeBody ? { body: response.body } : {}),
         };
     } catch (error) {
-        return { found: false, statusCode: null, reason: error.name === 'TimeoutError' ? 'timeout' : 'fetch-failed' };
+        return {
+            found: false,
+            statusCode: null,
+            reason: error.message?.includes('512 KiB')
+                ? 'resource-too-large'
+                : error.name === 'TimeoutError'
+                    ? 'timeout'
+                    : 'fetch-failed',
+        };
     }
 }
 
@@ -127,6 +138,8 @@ const claimedUrls = new Set();
 let failedRequests = 0;
 let chargeLimitReached = false;
 let budgetBoundaryReached = false;
+let contentLimitReached = false;
+let deliveredContentChars = 0;
 let billingClosed = false;
 let billingCommitChain = Promise.resolve();
 const discoveryMode = 'links';
@@ -137,6 +150,14 @@ const [robotsResource, llmsProbe, sitemapProbe] = await Promise.all([
     probeResource('/sitemap.xml'),
 ]);
 const { body: robotsBody = '', ...robotsProbe } = robotsResource;
+const robotsMissing = [404, 410].includes(robotsResource.statusCode);
+const robotsReliable = !respectRobotsTxt || robotsResource.found || robotsMissing;
+if (!robotsReliable) {
+    await Actor.setValue('OUTPUT', {
+        error: `robots.txt could not be read safely (${robotsResource.reason ?? robotsResource.statusCode ?? 'unknown error'}). Try again later or explicitly disable robots enforcement.`,
+    });
+    await Actor.exit({ exitCode: 1 });
+}
 const robotsFile = RobotsTxtFile.from(new URL('/robots.txt', start.origin).toString(), robotsResource.found ? robotsBody : '');
 
 function isAllowedByRobots(value) {
@@ -152,10 +173,20 @@ let crawler;
 async function commitPaidPage(normalizedUrl, page, datasetItem) {
     const commit = billingCommitChain.then(async () => {
         if (billingClosed) return false;
+        if (deliveredContentChars + page.content.length > maxDeliveredContentChars) {
+            contentLimitReached = true;
+            billingClosed = true;
+            log.info('The safe total content limit was reached before charging the current page; stopping gracefully.');
+            await crawler.autoscaledPool?.abort();
+            return false;
+        }
 
         const chargeResult = await Actor.pushData(datasetItem, 'page-processed');
         const currentItemWasRejected = chargeResult?.eventChargeLimitReached && chargeResult?.chargedCount === 0;
-        if (!currentItemWasRejected) pagesByUrl.set(normalizedUrl, page);
+        if (!currentItemWasRejected) {
+            pagesByUrl.set(normalizedUrl, page);
+            deliveredContentChars += page.content.length;
+        }
 
         if (chargeResult?.eventChargeLimitReached) {
             budgetBoundaryReached = true;
@@ -183,6 +214,7 @@ crawler = new CheerioCrawler({
             if (!isSameSite(target)) throw new Error(`Navigation outside the selected site is not allowed: ${target}`);
             if (!isAllowedByRobots(target)) throw new Error(`robots.txt disallows navigation to ${target}`);
             gotOptions.dnsLookup = publicDnsLookup;
+            gotOptions.http2 = false;
             gotOptions.headers = { ...gotOptions.headers, 'user-agent': crawlerUserAgent };
             gotOptions.hooks ??= {};
             gotOptions.hooks.beforeRedirect = [
@@ -196,6 +228,7 @@ crawler = new CheerioCrawler({
                         throw new Error(`robots.txt disallows redirect to ${redirectTarget}`);
                     }
                     updatedOptions.dnsLookup = publicDnsLookup;
+                    updatedOptions.http2 = false;
                 },
             ];
         },
@@ -355,7 +388,13 @@ manifest.readiness = {
     sitemap: sitemapProbe,
     crawlerRespectedRobotsTxt: respectRobotsTxt,
 };
-manifest.crawl = { failedRequests, chargeLimitReached, budgetBoundaryReached };
+manifest.crawl = {
+    failedRequests,
+    chargeLimitReached,
+    budgetBoundaryReached,
+    contentLimitReached,
+    deliveredContentChars,
+};
 manifest.issues = buildReadinessIssues(manifest);
 manifest.issueCount = manifest.issues.length;
 
@@ -406,6 +445,7 @@ if (trackChanges) {
         previousManifest.respectRobotsTxt === manifest.respectRobotsTxt &&
         previousManifest.fingerprintVersion === manifest.fingerprintVersion &&
         !budgetBoundaryReached &&
+        !contentLimitReached &&
         failedRequests === 0,
     );
     changes.hasChanges = Boolean(
@@ -421,6 +461,7 @@ if (trackChanges) {
     baselineEligible =
         (!previousManifest || changes.coverageComparable) &&
         !budgetBoundaryReached &&
+        !contentLimitReached &&
         failedRequests === 0;
 }
 
@@ -441,6 +482,8 @@ const runOutput = {
     failedRequests,
     chargeLimitReached,
     budgetBoundaryReached,
+    contentLimitReached,
+    deliveredContentChars,
     note: 'Download files from the Output or Storage tab. Schedule the same input to detect added and changed pages over time.',
 };
 await Actor.setValue('OUTPUT', runOutput);
