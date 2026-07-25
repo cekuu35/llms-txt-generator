@@ -99,6 +99,18 @@ export function publicDnsLookup(hostname, options, callback) {
     });
 }
 
+export function applyPublicRequestPolicy(options) {
+    options.dnsLookup = publicDnsLookup;
+    options.http2 = false;
+    // got-scraping's header generator performs a separate HTTPS ALPN probe.
+    // Disabling it ensures every network connection uses the guarded lookup.
+    options.useHeaderGenerator = false;
+    if (options.context && typeof options.context === 'object') {
+        options.context.useHeaderGenerator = false;
+    }
+    return options;
+}
+
 export function normalizeUrl(value) {
     const url = new URL(value);
     url.hash = '';
