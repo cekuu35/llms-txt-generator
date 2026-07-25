@@ -2,19 +2,19 @@
 
 Generate review-ready **`llms.txt`** and **`llms-full.txt`** files, then keep them fresh. Each successful run also creates a hashed site manifest and compares it with the previous comparable run, so scheduled workflows can see which public pages were added or changed.
 
-**[Run a 10-page test on Apify â†’](https://apify.com/nacred_corner/llms-txt-generator?utm_source=github&utm_medium=referral&utm_campaign=readme_primary)**
+**[Run a 10-page test on Apify →](https://apify.com/nacred_corner/llms-txt-generator?utm_source=github&utm_medium=referral&utm_campaign=readme_primary)**
 
 ## The result
 
 One run produces:
 
-- **`llms.txt`** â€” concise linked index for review and publication.
-- **`llms-full.txt`** â€” optional clean full text for documentation or RAG workflows.
-- **`manifest.json`** â€” normalized URLs, metadata, word counts, and SHA-256 content fingerprints.
-- **`changes.json`** â€” added, changed, unchanged, and possibly removed pages since the previous successful run.
-- **Dataset** â€” one visible record per processed page for JSON, CSV, Excel, API, n8n, or MCP workflows.
+- **`llms.txt`** — concise linked index for review and publication.
+- **`llms-full.txt`** — optional clean full text for documentation or RAG workflows.
+- **`manifest.json`** — normalized URLs, metadata, word counts, and SHA-256 content fingerprints.
+- **`changes.json`** — added, changed, unchanged, and possibly removed pages since the previous successful run.
+- **Dataset** — one visible record per processed page for JSON, CSV, Excel, API, n8n, or MCP workflows.
 
-The Actor also records whether `robots.txt`, an existing `/llms.txt`, and `/sitemap.xml` were reachable before generation. It does not invent an â€œAI rankingâ€ score.
+The Actor also records whether `robots.txt`, an existing `/llms.txt`, and `/sitemap.xml` were reachable before generation. It does not invent an “AI ranking” score.
 
 ## Why this is more useful than a one-time generator
 
@@ -26,7 +26,7 @@ The Actor also records whether `robots.txt`, an existing `/llms.txt`, and `/site
 
 ## Pricing and a safe first run
 
-Apify currently lists this Actor at **$5 per 1,000 `page-processed` results ($0.005 per delivered page record)**. The platform may show a separate small Actor-start event. Check the live Pricing tab before every run.
+Apify currently lists this Actor at **$5 per 1,000 delivered `result` records ($0.005 per page record)**. In the billing API this is Apify's synthetic `apify-default-dataset-item` event; the platform may also show a separate small Actor-start event. Check the live Pricing tab before every run.
 
 ```json
 {
@@ -91,5 +91,5 @@ The Actor normalizes each URL and hashes the normalized page title, meta descrip
 - `llms.txt` is an emerging, optional convention. Chrome Lighthouse's Agentic Browsing audit can check it, but publishing one does **not** guarantee crawling, ranking, citations, recommendations, or traffic.
 - Process only sites and content you are authorized to crawl and reuse. Source-site copyright, privacy, robots policy, and publication choices remain the user's responsibility.
 
-**[Generate and monitor the files on Apify â†’](https://apify.com/nacred_corner/llms-txt-generator?utm_source=github&utm_medium=referral&utm_campaign=readme_bottom)**
+**[Generate and monitor the files on Apify →](https://apify.com/nacred_corner/llms-txt-generator?utm_source=github&utm_medium=referral&utm_campaign=readme_bottom)**
 
