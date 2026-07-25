@@ -37,14 +37,14 @@ try {
 }
 
 const host = start.host;
-const siteHost = start.hostname.replace(/^www\./i, '').toLowerCase();
+const siteHost = start.hostname.toLowerCase();
 const generatedAt = new Date().toISOString();
 
 function isSameSite(value) {
     try {
         const candidate = validatePublicHttpUrl(value);
-        const candidateHost = candidate.hostname.replace(/^www\./i, '').toLowerCase();
-        return candidateHost === siteHost || candidateHost.endsWith(`.${siteHost}`);
+        const candidateHost = candidate.hostname.toLowerCase();
+        return candidateHost === siteHost;
     } catch {
         return false;
     }
@@ -54,13 +54,12 @@ async function requestSiteResource(pathname) {
     const target = await assertPublicResolvedUrl(new URL(pathname, start.origin));
     if (!isSameSite(target)) throw new Error('Resource target is outside the selected site.');
 
-    const response = await gotScraping({
+    const request = await gotScraping({
         url: target,
         method: 'GET',
-        responseType: 'text',
+        isStream: true,
         throwHttpErrors: false,
         maxRedirects: 3,
-        maxResponseSize: 512 * 1024,
         timeout: { request: 10000 },
         headers: { 'user-agent': crawlerUserAgent },
         dnsLookup: publicDnsLookup,
@@ -77,8 +76,35 @@ async function requestSiteResource(pathname) {
         },
     });
 
-    if (!isSameSite(response.url)) throw new Error('Resource response resolved outside the selected site.');
-    return response;
+    return new Promise((resolve, reject) => {
+        const chunks = [];
+        let totalBytes = 0;
+        let responseMetadata;
+        request.once('response', (response) => {
+            responseMetadata = response;
+        });
+        request.on('data', (chunk) => {
+            totalBytes += chunk.length;
+            if (totalBytes > 512 * 1024) {
+                request.destroy(new Error('Resource exceeds the 512 KiB safety limit.'));
+                return;
+            }
+            chunks.push(chunk);
+        });
+        request.once('error', reject);
+        request.once('end', () => {
+            if (!responseMetadata || !isSameSite(responseMetadata.url)) {
+                reject(new Error('Resource response resolved outside the selected site.'));
+                return;
+            }
+            resolve({
+                statusCode: responseMetadata.statusCode,
+                headers: responseMetadata.headers,
+                url: responseMetadata.url,
+                body: Buffer.concat(chunks).toString('utf8'),
+            });
+        });
+    });
 }
 
 async function probeResource(pathname, { includeBody = false } = {}) {
@@ -316,7 +342,7 @@ if (includeFullText) {
 const manifest = buildManifest(pages, {
     generatedAt,
     site: host,
-    startUrl: start.toString(),
+    startUrl: normalizeUrl(start),
     maxPages,
     discoveryMode,
     maxContentCharsPerPage,
@@ -354,7 +380,6 @@ let changes = {
     hasHighSeverityChanges: null,
     note: 'Change tracking was disabled for this run.',
 };
-let baselineUpdated = false;
 let historyStore;
 let historyRecordKey;
 let baselineEligible = false;
@@ -393,7 +418,10 @@ if (trackChanges) {
     if (!changes.coverageComparable && !changes.firstRun) {
         changes.note += ' Crawl settings or coverage changed, so removed candidates are not directly comparable.';
     }
-    baselineEligible = !budgetBoundaryReached && failedRequests === 0;
+    baselineEligible =
+        (!previousManifest || changes.coverageComparable) &&
+        !budgetBoundaryReached &&
+        failedRequests === 0;
 }
 
 await Actor.setValue('manifest.json', JSON.stringify(manifest, null, 2), { contentType: 'application/json; charset=utf-8' });
@@ -409,7 +437,7 @@ const runOutput = {
     hasHighSeverityChanges: changes.hasHighSeverityChanges,
     readinessIssueCount: manifest.issueCount,
     firstTrackedRun: changes.firstRun,
-    baselineUpdated,
+    baselineUpdateEligible: baselineEligible,
     failedRequests,
     chargeLimitReached,
     budgetBoundaryReached,
@@ -419,9 +447,7 @@ await Actor.setValue('OUTPUT', runOutput);
 
 if (baselineEligible) {
     await historyStore.setValue(historyRecordKey, manifest);
-    baselineUpdated = true;
-    runOutput.baselineUpdated = true;
-    await Actor.setValue('OUTPUT', runOutput);
+    log.info('Change baseline committed after all user-visible outputs were saved.');
 }
 
 log.info(`Done. ${pages.length} paid page result(s); ${changes.summary.changed} changed and ${changes.summary.added} added.`);
