@@ -70,6 +70,8 @@ Example summary:
 | `respectRobotsTxt` | `true` | Skip URLs disallowed by `robots.txt`. |
 | `maxContentCharsPerPage` | `12000` | Maximum extracted characters used per page. |
 
+The Actor caps `maxPages` at 1,000, per-page extracted content at 50,000 characters, and total delivered extracted content at 10,000,000 characters. If the total safety limit is reached, the current unpaid page is excluded, prior paid pages remain deliverable, and the partial run does not replace the clean change baseline.
+
 ## What counts as a change?
 
 The Actor normalizes each URL and hashes the normalized page title, meta description, and extracted main text. Whitespace-only differences do not change the fingerprint. A title, description, or content change does.
