@@ -151,7 +151,7 @@ export function buildManifest(pages, context = {}) {
         discoveryMode: context.discoveryMode,
         maxContentCharsPerPage: context.maxContentCharsPerPage,
         respectRobotsTxt: context.respectRobotsTxt,
-        fingerprintVersion: context.fingerprintVersion ?? 1,
+        fingerprintVersion: context.fingerprintVersion ?? 2,
         pagesProcessed: manifestPages.length,
         pages: manifestPages,
     };
