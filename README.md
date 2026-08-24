@@ -85,6 +85,8 @@ The Actor normalizes each URL and hashes the normalized page title, meta descrip
 - Developers feeding reviewed public content into retrieval pipelines.
 - Automation builders who need structured change events instead of manually comparing files.
 
+Generating `llms.txt` is one AI-readiness surface. For a broader no-signup check of structure, metadata and content-quality signals before you publish, run the **[free 100-point website readiness scorecard](https://cekuu35.github.io/evidence-led-website-audit/scorecard.html?utm_source=github&utm_medium=readme&utm_campaign=aiweb_scorecard&utm_content=llms_txt_generator)** - nothing uploaded.
+
 ## Important limits
 
 - The Actor processes public pages only and does not bypass authentication or access controls.
